@@ -13,9 +13,7 @@ This repository contains the source code for the research article "*[DACAD: Doma
 
 The code is implemented in Python using the PyTorch framework.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)  
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)  
-[![Paper DOI](https://img.shields.io/badge/Paper-TKDE%202025-brightgreen)](https://doi.org/10.1109/TKDE.2025.3569909)  
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)  [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)  [![Paper DOI](https://img.shields.io/badge/Paper-TKDE%202025-brightgreen)](https://doi.org/10.1109/TKDE.2025.3569909)  
 
 **DACAD** is a PyTorch-based framework for unsupervised domain adaptation in multivariate time series anomaly detection that hsa been published in IEEE TKDE.  
 It combines contrastive learning with anomaly injection to enhance generalisation to unseen anomaly types.
