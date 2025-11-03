@@ -9,4 +9,7 @@ main/__pycache__/*
 */*/*/__pycache__
 */*/*/__pycache__/*
 *.csv
-.DS_Store
+.DS_Store、
+
+results/*
+datasets/*
