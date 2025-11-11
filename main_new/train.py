@@ -1,11 +1,13 @@
 """
-多尺度域自适应DACAD训练主流程
-==============================
-功能：执行多尺度域对抗训练，实现跨域异常检测
+MSPAD训练主流程
+===============
+功能：执行MSPAD模型训练，实现跨域异常检测
+MSPAD: Multi-Scale Domain Adversarial Prototypical Anomaly Detection
 
 核心改进：
 - 在TCN的多个中间层同时进行域对抗训练
 - 层次化域对齐：从低层到高层逐步对齐域特征
+- 原型网络分类器：使用原型网络替代Deep SVDD
 """
 
 import sys
@@ -87,7 +89,7 @@ def main(args):
     input_channels_dim = dataset_src[0]['sequence'].shape[1]
     input_static_dim = dataset_src[0]['static'].shape[0] if 'static' in dataset_src[0] else 0
     
-    # ============ 第六步：初始化多尺度域自适应DACAD算法 ============
+    # ============ 第六步：初始化MSPAD算法 ============
     algorithm = get_algorithm(args, input_channels_dim=input_channels_dim, 
                              input_static_dim=input_static_dim)
     
@@ -206,7 +208,7 @@ def main(args):
 if __name__ == '__main__':
     parser = ArgumentParser(description="parse args")
     
-    parser.add_argument('--algo_name', type=str, default='newmodel')  # 使用新模型
+    parser.add_argument('--algo_name', type=str, default='MSPAD')  # 使用MSPAD模型
     
     parser.add_argument('-dr', '--dropout', type=float, default=0.1)
     parser.add_argument('-mo', '--momentum', type=float, default=0.99)

@@ -1,12 +1,13 @@
 """
-多尺度域自适应的DACAD模型 (Multi-Scale Domain Adversarial DACAD)
-================================================================
+MSPAD模型实现 (Multi-Scale Domain Adversarial Prototypical Anomaly Detection)
+============================================================================
 功能：在TCN的多个中间层同时进行域对抗训练，实现多尺度域对齐
 
 核心改进：
 1. 多尺度域判别器：在TCN的每个block后添加域判别器
 2. 层次化域对齐：从低层到高层逐步对齐域特征
-3. 加权多尺度损失：不同层使用不同权重
+3. 原型网络分类器：使用原型网络替代Deep SVDD
+4. 加权多尺度损失：不同层使用不同权重
 """
 
 import sys
@@ -284,18 +285,18 @@ class TemporalConvNetWithIntermediate(nn.Module):
             return x
 
 
-class DACAD_NN_MSDA(nn.Module):
+class MSPAD_NN(nn.Module):
     """
-    多尺度域自适应的DACAD变体 (Multi-Scale Domain Adversarial DACAD)
+    MSPAD模型实现 (Multi-Scale Domain Adversarial Prototypical Anomaly Detection)
     
-    基于原始DACAD，添加多尺度域对抗训练
+    基于原始DACAD，添加多尺度域对抗训练和原型网络分类器
     """
     
     def __init__(self, num_inputs, output_dim, num_channels, num_static, mlp_hidden_dim=256,
                  use_batch_norm=True, num_neighbors=1, kernel_size=2, stride=1, dilation_factor=2,
                  dropout=0.2, K=24576, m=0.999, T=0.07):
         """
-        初始化多尺度域自适应DACAD模型
+        初始化MSPAD模型
         
         参数:
             num_inputs: 输入时间序列的通道数
@@ -312,7 +313,7 @@ class DACAD_NN_MSDA(nn.Module):
             m: 动量更新系数
             T: 温度参数（用于对比学习）
         """
-        super(DACAD_NN_MSDA, self).__init__()
+        super(MSPAD_NN, self).__init__()
         
         self.sigmoid = nn.Sigmoid()
         

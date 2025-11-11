@@ -1,7 +1,8 @@
 """
-多尺度域自适应DACAD评估脚本
-============================
-功能：加载训练好的模型并在测试集上评估性能
+MSPAD评估脚本
+=============
+功能：加载训练好的MSPAD模型并在测试集上评估性能
+MSPAD: Multi-Scale Domain Adversarial Prototypical Anomaly Detection
 """
 
 import sys

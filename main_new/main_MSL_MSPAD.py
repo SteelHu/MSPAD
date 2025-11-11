@@ -1,10 +1,11 @@
 """
-多尺度域自适应DACAD - MSL数据集实验主入口
-==========================================
-功能：在MSL数据集上测试多尺度域自适应DACAD模型
+MSPAD - MSL数据集实验主入口
+===========================
+功能：在MSL数据集上测试MSPAD模型
+MSPAD: Multi-Scale Domain Adversarial Prototypical Anomaly Detection
 
 使用方法：
-python main_new/main_MSL_MSDA.py
+python main_new/main_MSL_MSPAD.py
 """
 
 import os
@@ -40,10 +41,10 @@ if __name__ == '__main__':
                 # ============ 第三步：启动训练流程 ============
                 train = os.path.join('main_new', 'train.py')
                 
-                # 训练命令参数（使用newmodel算法）
+                # 训练命令参数（使用MSPAD模型）
                 command = [
                     'python', train,
-                    '--algo_name', 'newmodel',           # 使用新模型
+                    '--algo_name', 'MSPAD',           # 使用MSPAD模型
                     '--num_epochs', '20',                # 训练轮数：20 epochs
                     '--queue_size', '98304',             # MoCo队列大小：98304个负样本
                     '--momentum', '0.99',                # 动量编码器更新系数：0.99
@@ -65,7 +66,7 @@ if __name__ == '__main__':
                     '--id_trg', trg,                     # 目标域通道ID
                     '--path_src', 'datasets/MSL_SMAP',   # 源域数据路径
                     '--path_trg', 'datasets/MSL_SMAP',   # 目标域数据路径
-                    '--experiment_folder', 'MSL_MSDA'    # 实验结果保存文件夹（多尺度域自适应）
+                    '--experiment_folder', 'MSL_MSDA'    # 实验结果保存文件夹（MSPAD）
                 ]
                 
                 # 执行训练

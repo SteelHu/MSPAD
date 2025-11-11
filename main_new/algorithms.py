@@ -1,7 +1,8 @@
 """
-多尺度域自适应DACAD算法封装层
-================================
-功能：封装多尺度域对抗训练的DACAD算法
+MSPAD算法封装层
+MSPAD: Multi-Scale Domain Adversarial Prototypical Anomaly Detection
+====================================================================
+功能：封装MSPAD算法，实现多尺度域对抗训练和原型网络分类
 """
 
 import sys
@@ -17,7 +18,7 @@ from utils.tcn_no_norm import TemporalConvNet
 from utils.augmentations import Augmenter, concat_mask
 from utils.util_progress_log import AverageMeter, PredictionMeter, get_dataset_type
 from utils.loss import PredictionLoss, SupervisedContrastiveLoss
-from models.newmodel import DACAD_NN_MSDA
+from models.MSPAD import MSPAD_NN
 import torch.nn.functional as F
 from sklearn.metrics import accuracy_score
 
@@ -34,8 +35,8 @@ def get_algorithm(args, input_channels_dim, input_static_dim):
     返回:
         算法实例
     """
-    if args.algo_name == "newmodel":
-        return DACAD_MSDA(args, input_channels_dim, input_static_dim)
+    if args.algo_name == "MSPAD":
+        return MSPAD(args, input_channels_dim, input_static_dim)
     else:
         # 如果使用其他算法，尝试从原始algorithms导入
         try:
@@ -99,35 +100,37 @@ class Base_Algorithm(nn.Module):
 
 
 # ============================================================================
-# 多尺度域自适应DACAD算法实现
+# MSPAD算法实现
+# MSPAD: Multi-Scale Domain Adversarial Prototypical Anomaly Detection
 # ============================================================================
-class DACAD_MSDA(Base_Algorithm):
+class MSPAD(Base_Algorithm):
     """
-    多尺度域自适应DACAD算法
-    ========================
+    MSPAD算法实现
+    =============
     
     核心改进：
     1. 多尺度域对抗：在TCN的多个中间层同时进行域判别
     2. 层次化域对齐：从低层到高层逐步对齐域特征
-    3. 加权多尺度损失：不同层使用不同权重
+    3. 原型网络分类器：使用原型网络替代Deep SVDD
+    4. 加权多尺度损失：不同层使用不同权重
     """
     
     def __init__(self, args, input_channels_dim, input_static_dim):
         """
-        初始化多尺度域自适应DACAD算法
+        初始化MSPAD算法
         
         参数:
             args: 超参数配置
             input_channels_dim: 时间序列的特征维度
             input_static_dim: 静态特征的维度
         """
-        super(DACAD_MSDA, self).__init__(args)
+        super(MSPAD, self).__init__(args)
         
         self.input_channels_dim = input_channels_dim
         self.input_static_dim = input_static_dim
         
-        # ========== 创建多尺度域自适应DACAD模型 ==========
-        self.model = DACAD_NN_MSDA(
+        # ========== 创建MSPAD模型 ==========
+        self.model = MSPAD_NN(
             num_inputs=(1+args.use_mask)*input_channels_dim,
             output_dim=self.output_dim,
             num_channels=self.num_channels,
@@ -166,7 +169,7 @@ class DACAD_MSDA(Base_Algorithm):
         """
         执行一步训练或验证
         
-        这是多尺度域自适应DACAD的核心方法，包含：
+        这是MSPAD的核心方法，包含：
         1. 前向传播：同时处理源域和目标域数据
         2. 计算多个损失函数（包括多尺度域对抗损失）
         3. 反向传播更新参数（训练模式）

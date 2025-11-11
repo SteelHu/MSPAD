@@ -1,4 +1,6 @@
-# 多尺度域自适应DACAD模型数学框架
+# MSPAD模型数学框架
+
+**MSPAD: Multi-Scale Domain Adversarial Prototypical Anomaly Detection**
 
 ## 目录
 
@@ -15,7 +17,7 @@
 
 ## 模型概述
 
-多尺度域自适应DACAD（Multi-Scale Domain Adversarial DACAD，MSDA-DACAD）是一个用于跨域异常检测的深度学习模型。该模型在原始DACAD基础上引入了**多尺度域对抗训练**机制，通过在时间卷积网络（TCN）的多个中间层同时进行域判别，实现层次化的域特征对齐。
+MSPAD（Multi-Scale Domain Adversarial Prototypical Anomaly Detection）是一个用于跨域异常检测的深度学习模型。该模型在原始DACAD基础上引入了**多尺度域对抗训练**机制，通过在时间卷积网络（TCN）的多个中间层同时进行域判别，实现层次化的域特征对齐。
 
 ### 核心改进
 
@@ -450,7 +452,7 @@ $$
 ### 伪代码
 
 ```
-Algorithm: MSDA-DACAD Training
+Algorithm: MSPAD Training
 Input: D_s, D_t, hyperparameters
 Initialize: E_q, E_k, P, F, D, {D_ms^(l)}, Q_s, Q_t
 
@@ -581,7 +583,7 @@ $$
 
 ## 总结
 
-多尺度域自适应DACAD模型通过以下机制实现跨域异常检测：
+MSPAD模型通过以下机制实现跨域异常检测：
 
 1. **多尺度域对抗训练**：在TCN的多个层次同时进行域对齐，实现层次化特征对齐
 2. **原型网络分类**：学习正常样本的原型表示，异常样本远离原型

@@ -1,10 +1,11 @@
 """
-多尺度域自适应DACAD - Boiler数据集实验主入口
-============================================
-功能：在Boiler数据集上测试多尺度域自适应DACAD模型
+MSPAD - Boiler数据集实验主入口
+==============================
+功能：在Boiler数据集上测试MSPAD模型
+MSPAD: Multi-Scale Domain Adversarial Prototypical Anomaly Detection
 
 使用方法：
-python main_new/main_Boiler_MSDA.py
+python main_new/main_Boiler_MSPAD.py
 """
 
 import os
@@ -30,11 +31,11 @@ if __name__ == '__main__':
                 # ============ 第三步：启动训练流程 ============
                 train = os.path.join('main_new', 'train.py')
                 
-                # 训练命令参数（使用newmodel算法）
+                # 训练命令参数（使用MSPAD模型）
                 # Boiler数据集配置：使用较小的TCN通道数（128-128-128）和MLP维度（256）
                 command = [
                     'python', train,
-                    '--algo_name', 'newmodel',           # 使用新模型
+                    '--algo_name', 'MSPAD',           # 使用MSPAD模型
                     '--num_epochs', '20',                # 训练轮数：20 epochs
                     '--queue_size', '98304',             # MoCo队列大小：98304个负样本
                     '--momentum', '0.99',                # 动量编码器更新系数：0.99
@@ -56,7 +57,7 @@ if __name__ == '__main__':
                     '--path_trg', 'datasets/Boiler',     # 目标域数据路径
                     '--id_src', src,                     # 源域ID
                     '--id_trg', trg,                     # 目标域ID
-                    '--experiment_folder', 'Boiler_MSDA' # 实验结果保存文件夹（多尺度域自适应）
+                    '--experiment_folder', 'Boiler_MSDA' # 实验结果保存文件夹（MSPAD）
                 ]
                 
                 # 执行训练

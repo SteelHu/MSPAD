@@ -1,8 +1,8 @@
-# 多尺度域自适应DACAD (Multi-Scale Domain Adversarial DACAD)
+# MSPAD: Multi-Scale Domain Adversarial Prototypical Anomaly Detection
 
 ## 概述
 
-这是DACAD的改进版本，实现了**方案一：多尺度域对抗网络**。
+MSPAD是DACAD的改进版本，实现了**多尺度域对抗训练**和**原型网络分类器**。
 
 ### 核心改进
 
@@ -15,11 +15,11 @@
 ```
 main_new/
 ├── models/
-│   └── newmodel.py          # 多尺度域自适应DACAD模型
-├── algorithms.py             # 算法封装（DACAD_MSDA类）
+│   └── MSPAD.py          # MSPAD模型实现
+├── algorithms.py             # 算法封装（MSPAD类）
 ├── train.py                 # 训练脚本
 ├── eval.py                  # 评估脚本
-├── main_MSL_MSDA.py        # MSL数据集实验入口
+├── main_MSL_MSPAD.py        # MSL数据集实验入口
 └── README.md               # 本文件
 ```
 
@@ -30,14 +30,14 @@ main_new/
 #### 方法一：使用示例脚本（推荐）
 
 ```bash
-python main_new/main_MSL_MSDA.py
+python main_new/main_MSL_MSPAD.py
 ```
 
 #### 方法二：直接使用train.py
 
 ```bash
 python main_new/train.py \
-    --algo_name newmodel \
+    --algo_name MSPAD \
     --num_epochs 20 \
     --batch_size 256 \
     --learning_rate 1e-4 \
@@ -62,7 +62,7 @@ python main_new/eval.py \
 
 ### 新增参数
 
-- `--algo_name newmodel`: 使用多尺度域自适应模型（必须）
+- `--algo_name MSPAD`: 使用MSPAD模型（必须）
 - `--weight_loss_ms_disc 0.3`: 多尺度域对抗损失权重（默认0.3）
 
 ### 原有参数（保持不变）
@@ -112,13 +112,14 @@ python main_new/eval.py \
 
 ## 与原始DACAD的区别
 
-| 特性 | 原始DACAD | 多尺度DACAD |
-|------|-----------|-------------|
+| 特性 | 原始DACAD | MSPAD |
+|------|-----------|-------|
 | 域判别器数量 | 1个（最终层） | N+1个（N个中间层 + 1个最终层） |
 | 域对齐方式 | 单尺度 | 多尺度层次化对齐 |
+| 分类器 | Deep SVDD | 原型网络（Prototypical Network） |
 | 损失函数 | 4项 | 5项（新增多尺度域对抗损失） |
-| 模型文件 | `models/dacad.py` | `models/newmodel.py` |
-| 算法类 | `DACAD` | `DACAD_MSDA` |
+| 模型文件 | `models/dacad.py` | `models/MSPAD.py` |
+| 算法类 | `DACAD` | `MSPAD` |
 
 ## 故障排除
 

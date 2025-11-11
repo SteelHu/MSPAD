@@ -26,21 +26,21 @@ EXPERIMENTS = {
         'description': '原始DACAD（单尺度域对抗）'
     },
     'Exp-1.1': {
-        'algo_name': 'newmodel',
+        'algo_name': 'MSPAD',
         'weight_loss_disc': 0.5,
         'weight_loss_ms_disc': 0.3,
         'experiment_folder': 'MSL_MSDA_Full',
         'description': '多尺度DACAD（完整版：3层多尺度 + 单尺度）'
     },
     'Exp-1.2': {
-        'algo_name': 'newmodel',
+        'algo_name': 'MSPAD',
         'weight_loss_disc': 0.0,  # 无单尺度
         'weight_loss_ms_disc': 0.3,
         'experiment_folder': 'MSL_MSDA_MSOnly',
         'description': '多尺度DACAD（仅多尺度，无单尺度）'
     },
     'Exp-2.1': {
-        'algo_name': 'newmodel',
+        'algo_name': 'MSPAD',
         'weight_loss_disc': 0.5,
         'weight_loss_ms_disc': 0.3,
         'use_layer_mask': [1, 0, 0],  # 仅第1层
@@ -48,7 +48,7 @@ EXPERIMENTS = {
         'description': '仅低层域对抗（Layer 1）'
     },
     'Exp-2.2': {
-        'algo_name': 'newmodel',
+        'algo_name': 'MSPAD',
         'weight_loss_disc': 0.5,
         'weight_loss_ms_disc': 0.3,
         'use_layer_mask': [0, 1, 0],  # 仅第2层
@@ -56,7 +56,7 @@ EXPERIMENTS = {
         'description': '仅中层域对抗（Layer 2）'
     },
     'Exp-2.3': {
-        'algo_name': 'newmodel',
+        'algo_name': 'MSPAD',
         'weight_loss_disc': 0.5,
         'weight_loss_ms_disc': 0.3,
         'use_layer_mask': [0, 0, 1],  # 仅第3层
@@ -64,7 +64,7 @@ EXPERIMENTS = {
         'description': '仅高层域对抗（Layer 3）'
     },
     'Exp-2.7': {
-        'algo_name': 'newmodel',
+        'algo_name': 'MSPAD',
         'weight_loss_disc': 0.5,
         'weight_loss_ms_disc': 0.3,
         'use_layer_mask': [1, 1, 1],  # 所有层
@@ -72,7 +72,7 @@ EXPERIMENTS = {
         'description': '所有层域对抗（完整配置）'
     },
     'Exp-3.1': {
-        'algo_name': 'newmodel',
+        'algo_name': 'MSPAD',
         'weight_loss_disc': 0.5,
         'weight_loss_ms_disc': 0.3,
         'scale_weights': [0.1, 0.3, 0.6],  # 默认配置
@@ -80,7 +80,7 @@ EXPERIMENTS = {
         'description': '默认权重配置 [0.1, 0.3, 0.6]'
     },
     'Exp-3.2': {
-        'algo_name': 'newmodel',
+        'algo_name': 'MSPAD',
         'weight_loss_disc': 0.5,
         'weight_loss_ms_disc': 0.3,
         'scale_weights': [0.33, 0.33, 0.34],  # 均匀权重
@@ -88,7 +88,7 @@ EXPERIMENTS = {
         'description': '均匀权重配置 [0.33, 0.33, 0.34]'
     },
     'Exp-3.3': {
-        'algo_name': 'newmodel',
+        'algo_name': 'MSPAD',
         'weight_loss_disc': 0.5,
         'weight_loss_ms_disc': 0.3,
         'scale_weights': [0.6, 0.3, 0.1],  # 反向权重

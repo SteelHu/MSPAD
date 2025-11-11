@@ -50,7 +50,7 @@ def run_sensitivity_experiment(param_name, param_value, base_config, src='F-5', 
     # 构建训练命令
     train_cmd = [
         'python', 'main_new/train.py',
-        '--algo_name', 'newmodel',
+        '--algo_name', 'MSPAD',
         '--num_epochs', '20',
         '--batch_size', '256',
         '--eval_batch_size', '256',
@@ -169,7 +169,7 @@ def analyze_sensitivity_2_tcn_layers():
         # 构建训练命令
         train_cmd = [
             'python', 'main_new/train.py',
-            '--algo_name', 'newmodel',
+            '--algo_name', 'MSPAD',
             '--num_epochs', '20',
             '--batch_size', '256',
             '--learning_rate', '1e-4',
