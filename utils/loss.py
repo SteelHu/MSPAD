@@ -58,6 +58,68 @@ class PredictionLoss(object):
 
         return total_loss
 
+    def prototypical_loss(self, distances, labels, prototype, threshold, margin=1.0):
+        """
+        原型网络损失函数 (Prototypical Network Loss)
+        ==============================================
+        
+        功能：计算原型网络的分类损失
+        
+        原理：
+        1. 正常样本（y=0）应该靠近原型（距离小）
+        2. 异常样本（y=1）应该远离原型（距离大）
+        3. 使用margin-based损失确保正常和异常样本之间有足够间隔
+        
+        数学描述：
+        - 正常样本损失：L_normal = max(0, dist - threshold)
+        - 异常样本损失：L_anomal = max(0, threshold + margin - dist)
+        - 总损失：L = mean(L_normal + L_anomal)
+        
+        参数:
+            distances: 样本到原型的距离 [batch_size]
+            labels: 真实标签 [batch_size, 1]，0=正常，1=异常
+            prototype: 原型中心（用于兼容性，实际不使用）
+            threshold: 阈值（可学习参数）
+            margin: 间隔参数，确保正常和异常样本之间有足够间隔
+        
+        返回:
+            loss: 原型网络损失（标量）
+        """
+        labels_src = labels.squeeze()
+        
+        # 确保在正确的设备上
+        if labels_src.is_cuda:
+            distances = distances.cuda()
+            threshold = threshold.cuda()
+        
+        # 提取正常样本和异常样本的索引
+        normal_mask = (labels_src == 0)
+        anomal_mask = (labels_src == 1)
+        
+        loss = 0.0
+        
+        # 正常样本损失：距离应该小于阈值
+        if normal_mask.sum() > 0:
+            normal_distances = distances[normal_mask]
+            # 如果距离大于阈值，产生损失
+            normal_loss = torch.clamp(normal_distances - threshold, min=0.0)
+            # 应用类别权重
+            loss += self.loss_weights[0] * normal_loss.mean()
+        
+        # 异常样本损失：距离应该大于阈值+margin
+        if anomal_mask.sum() > 0:
+            anomal_distances = distances[anomal_mask]
+            # 如果距离小于阈值+margin，产生损失
+            anomal_loss = torch.clamp(threshold + margin - anomal_distances, min=0.0)
+            # 应用类别权重
+            loss += self.loss_weights[1] * anomal_loss.mean()
+        
+        # 如果batch中没有正常或异常样本，返回零损失
+        if normal_mask.sum() == 0 and anomal_mask.sum() == 0:
+            return torch.tensor(0.0, device=distances.device, requires_grad=True)
+        
+        return loss
+
 class SupervisedContrastiveLoss(object):
     def __init__(self, dataset_type="smd"):
         self.dataset_type = dataset_type

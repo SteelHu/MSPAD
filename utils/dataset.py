@@ -53,7 +53,7 @@ class MSLDataset(Dataset):
         pid_ = np.random.randint(0, len(self.positive))
         positive = self.positive[pid_]
         random_choice = np.random.randint(0, 10)
-        if random_choice == 0:
+        if random_choice == 0 and len(self.negative) > 0:
             nid_ = np.random.randint(0, len(self.negative))
             negative = self.negative[nid_]
         else:
@@ -248,7 +248,7 @@ class SMDDataset(Dataset):
         pid_ = np.random.randint(0, len(self.positive))
         positive = self.positive[pid_]
         random_choice = np.random.randint(0, 10)
-        if random_choice == 0:
+        if random_choice == 0 and len(self.negative) > 0:
             nid_ = np.random.randint(0, len(self.negative))
             negative = self.negative[nid_]
         else:
@@ -410,7 +410,7 @@ class BoilerDataset(Dataset):
         pid_ = np.random.randint(0, len(self.positive))
         positive = self.positive[pid_]
         random_choice = np.random.randint(0, 10)
-        if random_choice == 0:
+        if random_choice == 0 and len(self.negative) > 0:
             nid_ = np.random.randint(0, len(self.negative))
             negative = self.negative[nid_]
         else:
