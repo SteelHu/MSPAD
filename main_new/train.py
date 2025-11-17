@@ -246,6 +246,12 @@ if __name__ == '__main__':
     parser.add_argument('--prototypical_margin', type=float, default=1.0,
                         help='原型网络间隔参数，控制正常和异常样本之间的最小距离（默认1.0）')
     
+    # 多尺度域对抗超参数
+    parser.add_argument('--scale_weights', type=str, default=None,
+                        help='多尺度层权重，用逗号分隔，如 "0.1,0.3,0.6"（默认：自动生成）')
+    parser.add_argument('--use_layer_mask', type=str, default=None,
+                        help='层掩码，用逗号分隔，如 "1,1,0" 表示使用前两层（默认：使用所有层）')
+    
     parser.add_argument('-emf', '--experiments_main_folder', type=str, default='results')
     parser.add_argument('-ef', '--experiment_folder', type=str, default='MSL_MSDA')
     

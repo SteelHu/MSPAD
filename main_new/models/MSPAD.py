@@ -294,7 +294,7 @@ class MSPAD_NN(nn.Module):
     
     def __init__(self, num_inputs, output_dim, num_channels, num_static, mlp_hidden_dim=256,
                  use_batch_norm=True, num_neighbors=1, kernel_size=2, stride=1, dilation_factor=2,
-                 dropout=0.2, K=24576, m=0.999, T=0.07):
+                 dropout=0.2, K=24576, m=0.999, T=0.07, scale_weights=None, use_layer_mask=None):
         """
         初始化MSPAD模型
         
@@ -312,6 +312,8 @@ class MSPAD_NN(nn.Module):
             K: 队列大小（负样本数量）
             m: 动量更新系数
             T: 温度参数（用于对比学习）
+            scale_weights: 多尺度层权重列表，如 [0.1, 0.3, 0.6]，如果为None则自动生成
+            use_layer_mask: 层掩码列表，如 [1, 1, 0] 表示使用前两层，如果为None则使用所有层
         """
         super(MSPAD_NN, self).__init__()
         
@@ -373,16 +375,37 @@ class MSPAD_NN(nn.Module):
         )
         
         # ========== 多尺度权重（低层权重小，高层权重大） ==========
-        # 根据层数自动生成权重
         num_layers = len(num_channels)
-        if num_layers == 3:
-            self.scale_weights = [0.1, 0.3, 0.6]  # 3层TCN
-        elif num_layers == 2:
-            self.scale_weights = [0.2, 0.8]  # 2层TCN
+        if scale_weights is not None:
+            # 使用用户指定的权重
+            assert len(scale_weights) == num_layers, f"scale_weights长度({len(scale_weights)})必须等于层数({num_layers})"
+            self.scale_weights = scale_weights
         else:
-            # 自动生成：权重随层数递增
-            total_weight = sum(range(1, num_layers + 1))
-            self.scale_weights = [i / total_weight for i in range(1, num_layers + 1)]
+            # 根据层数自动生成权重
+            if num_layers == 3:
+                self.scale_weights = [0.1, 0.3, 0.6]  # 3层TCN
+            elif num_layers == 2:
+                self.scale_weights = [0.2, 0.8]  # 2层TCN
+            else:
+                # 自动生成：权重随层数递增
+                total_weight = sum(range(1, num_layers + 1))
+                self.scale_weights = [i / total_weight for i in range(1, num_layers + 1)]
+        
+        # ========== 层掩码（控制哪些层参与多尺度域对抗） ==========
+        if use_layer_mask is not None:
+            assert len(use_layer_mask) == num_layers, f"use_layer_mask长度({len(use_layer_mask)})必须等于层数({num_layers})"
+            self.use_layer_mask = use_layer_mask
+        else:
+            # 默认使用所有层
+            self.use_layer_mask = [1] * num_layers
+        
+        # 归一化权重：只对启用的层归一化
+        active_weights = [w for i, w in enumerate(self.scale_weights) if self.use_layer_mask[i]]
+        if len(active_weights) > 0 and sum(active_weights) > 0:
+            total_active_weight = sum(active_weights)
+            normalized_weights = [w / total_active_weight if self.use_layer_mask[i] else 0.0 
+                                 for i, w in enumerate(self.scale_weights)]
+            self.scale_weights = normalized_weights
         
         # ========== 初始化键编码器 ==========
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
@@ -515,8 +538,12 @@ class MSPAD_NN(nn.Module):
         pred_domain = self.discriminator(q_reversed)
         
         # ========== 多尺度域判别（新增） ==========
-        ms_disc_outputs_s = self.ms_discriminator(feat_s_list, alpha)
-        ms_disc_outputs_t = self.ms_discriminator(feat_t_list, alpha)
+        ms_disc_outputs_s_all = self.ms_discriminator(feat_s_list, alpha)
+        ms_disc_outputs_t_all = self.ms_discriminator(feat_t_list, alpha)
+        
+        # 根据use_layer_mask过滤输出
+        ms_disc_outputs_s = [out for i, out in enumerate(ms_disc_outputs_s_all) if self.use_layer_mask[i]]
+        ms_disc_outputs_t = [out for i, out in enumerate(ms_disc_outputs_t_all) if self.use_layer_mask[i]]
         
         # ========== 源域预测任务（使用原型网络） ==========
         # 返回：距离、原型中心、阈值（保持接口兼容）

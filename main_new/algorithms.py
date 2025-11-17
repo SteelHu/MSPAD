@@ -130,6 +130,24 @@ class MSPAD(Base_Algorithm):
         self.input_static_dim = input_static_dim
         
         # ========== 创建MSPAD模型 ==========
+        # 解析scale_weights参数（如果提供）
+        scale_weights = None
+        if hasattr(args, 'scale_weights') and args.scale_weights is not None:
+            if isinstance(args.scale_weights, str):
+                # 从字符串解析，如 "0.1,0.3,0.6"
+                scale_weights = [float(x.strip()) for x in args.scale_weights.split(',')]
+            elif isinstance(args.scale_weights, list):
+                scale_weights = args.scale_weights
+        
+        # 解析use_layer_mask参数（如果提供）
+        use_layer_mask = None
+        if hasattr(args, 'use_layer_mask') and args.use_layer_mask is not None:
+            if isinstance(args.use_layer_mask, str):
+                # 从字符串解析，如 "1,1,0"
+                use_layer_mask = [int(x.strip()) for x in args.use_layer_mask.split(',')]
+            elif isinstance(args.use_layer_mask, list):
+                use_layer_mask = args.use_layer_mask
+        
         self.model = MSPAD_NN(
             num_inputs=(1+args.use_mask)*input_channels_dim,
             output_dim=self.output_dim,
@@ -142,7 +160,9 @@ class MSPAD(Base_Algorithm):
             dilation_factor=args.dilation_factor_TCN,
             dropout=args.dropout,
             K=args.queue_size,
-            m=args.momentum
+            m=args.momentum,
+            scale_weights=scale_weights,
+            use_layer_mask=use_layer_mask
         )
         
         self.augmenter = None
@@ -212,19 +232,23 @@ class MSPAD(Base_Algorithm):
         
         # 2️⃣ 多尺度域对抗损失（新增）
         ms_disc_loss = 0
-        domain_labels_s = torch.ones(len(q_s_repr), 1).to(device=q_s_repr.device)
-        domain_labels_t = torch.zeros(len(q_t), 1).to(device=q_t.device)
-        
-        for i, (disc_s, disc_t, weight) in enumerate(
-            zip(ms_disc_outputs_s, ms_disc_outputs_t, self.model.scale_weights)
-        ):
-            # 拼接源域和目标域的预测和标签
-            labels_ms = torch.cat([domain_labels_s, domain_labels_t], dim=0)
-            preds_ms = torch.cat([disc_s, disc_t], dim=0)
+        if len(ms_disc_outputs_s) > 0 and len(ms_disc_outputs_t) > 0:
+            domain_labels_s = torch.ones(len(q_s_repr), 1).to(device=q_s_repr.device)
+            domain_labels_t = torch.zeros(len(q_t), 1).to(device=q_t.device)
             
-            # 计算该层的域对抗损失
-            layer_loss = F.binary_cross_entropy(preds_ms, labels_ms)
-            ms_disc_loss += weight * layer_loss
+            # 获取过滤后的权重（只包含启用的层）
+            active_weights = [w for i, w in enumerate(self.model.scale_weights) if self.model.use_layer_mask[i]]
+            
+            for i, (disc_s, disc_t, weight) in enumerate(
+                zip(ms_disc_outputs_s, ms_disc_outputs_t, active_weights)
+            ):
+                # 拼接源域和目标域的预测和标签
+                labels_ms = torch.cat([domain_labels_s, domain_labels_t], dim=0)
+                preds_ms = torch.cat([disc_s, disc_t], dim=0)
+                
+                # 计算该层的域对抗损失
+                layer_loss = F.binary_cross_entropy(preds_ms, labels_ms)
+                ms_disc_loss += weight * layer_loss
         
         # 3️⃣ 原型网络分类损失（替换Deep SVDD）
         # 获取原型网络间隔参数（margin），默认1.0

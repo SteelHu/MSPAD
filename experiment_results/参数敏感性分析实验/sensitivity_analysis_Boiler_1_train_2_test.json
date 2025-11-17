@@ -1,0 +1,21 @@
+{
+  "timestamp": "2025-11-17T04:06:22.517650",
+  "duration_hours": 8.007447551666667,
+  "dataset": "Boiler",
+  "source": "1_train",
+  "target": "2_test",
+  "results": {
+    "scale_weights": {
+      "name": "Multi-Scale Layer Weights",
+      "results": {
+        "[0.1, 0.3, 0.6]": "Success",
+        "[0.33, 0.33, 0.34]": "Success",
+        "[0.6, 0.3, 0.1]": "Success",
+        "[0.0, 0.0, 1.0]": "Success",
+        "[0.2, 0.4, 0.4]": "Success",
+        "[0.5, 0.3, 0.2]": "Success",
+        "[0.0, 0.5, 0.5]": "Success"
+      }
+    }
+  }
+}

@@ -118,11 +118,29 @@ def main(args):
     df_trg.insert(0, 'src_id', args.id_src)
     df_trg.insert(1, 'trg_id', args.id_trg)
 
-    fname = 'Ours_msltest_' + args.id_src + ".csv"
-    if os.path.isfile(fname):
-        df_trg.to_csv(fname, mode='a', header=False, index=False)
+    # 创建结果汇总文件夹
+    results_summary_dir = 'experiment_results'
+    if not os.path.exists(results_summary_dir):
+        os.makedirs(results_summary_dir)
+    
+    # 根据数据集类型生成汇总文件名，仿照MSL的命名格式
+    if dataset_type == "msl":
+        fname = 'DACAD_MSL_' + args.id_src + ".csv"
+    elif dataset_type == "smd":
+        fname = 'DACAD_SMD_' + args.id_src + ".csv"
+    elif dataset_type == "boiler":
+        fname = 'DACAD_Boiler_' + args.id_src + ".csv"
     else:
-        df_trg.to_csv(fname, mode='a', header=True, index=False)
+        fname = 'DACAD_test_' + args.id_src + ".csv"
+    
+    # 保存到统一的结果文件夹
+    fpath = os.path.join(results_summary_dir, fname)
+    if os.path.isfile(fpath):
+        df_trg.to_csv(fpath, mode='a', header=False, index=False)
+    else:
+        df_trg.to_csv(fpath, mode='a', header=True, index=False)
+    
+    log("Summary results saved to " + fpath)
 
     for i_batch, sample_batched in enumerate(dataloader_test_src):
         algorithm.predict_src(sample_batched)
@@ -153,6 +171,16 @@ def main(args):
     metrics_pred_test_src = algorithm.pred_meter_val_src.get_metrics()
 
     log_scores(saved_args, dataset_type, metrics_pred_test_src)
+    
+    # 评估完成后，根据参数决定是否删除模型文件以节省空间
+    if args.delete_model:
+        model_file_path = os.path.join(experiment_folder_path, "model_best.pth.tar")
+        if os.path.exists(model_file_path):
+            try:
+                os.remove(model_file_path)
+                log(f"Model file deleted: {model_file_path}")
+            except Exception as e:
+                log(f"Warning: Failed to delete model file: {e}")
 
 # parse command-line arguments and execute the main method
 if __name__ == '__main__':
@@ -162,6 +190,9 @@ if __name__ == '__main__':
     parser.add_argument('-ef', '--experiment_folder', type=str, default='default')
     parser.add_argument('--id_src', type=str, default='1-1')
     parser.add_argument('--id_trg', type=str, default='1-5')
+    parser.add_argument('--keep_model', action='store_false', dest='delete_model',
+                       help='Keep model file after evaluation (default: delete model after evaluation)')
+    parser.set_defaults(delete_model=True)
 
     args = parser.parse_args()
 

@@ -1,0 +1,77 @@
+{
+  "timestamp": "2025-11-13T13:48:59.402705",
+  "duration_hours": 3.7726047969444445,
+  "dataset": "MSL",
+  "source": "F-5",
+  "target": "C-1",
+  "results": {
+    "weight_loss_ms_disc": {
+      "name": "Multi-Scale Domain Adversarial Loss Weight",
+      "results": {
+        "0.0": "Success",
+        "0.1": "Success",
+        "0.2": "Success",
+        "0.3": "Success",
+        "0.4": "Success",
+        "0.5": "Success",
+        "0.7": "Success"
+      }
+    },
+    "weight_loss_disc": {
+      "name": "Single-Scale Domain Adversarial Loss Weight",
+      "results": {
+        "0.0": "Success",
+        "0.1": "Success",
+        "0.3": "Success",
+        "0.5": "Success",
+        "0.7": "Success",
+        "1.0": "Success"
+      }
+    },
+    "prototypical_margin": {
+      "name": "Prototypical Network Margin",
+      "results": {
+        "0.5": "Success",
+        "0.75": "Success",
+        "1.0": "Success",
+        "1.25": "Success",
+        "1.5": "Success",
+        "1.75": "Success",
+        "2.0": "Success",
+        "2.5": "Success"
+      }
+    },
+    "weight_loss_src_sup": {
+      "name": "Source Supervised Contrastive Loss Weight",
+      "results": {
+        "0.0": "Success",
+        "0.05": "Success",
+        "0.1": "Success",
+        "0.2": "Success",
+        "0.3": "Success"
+      }
+    },
+    "weight_loss_trg_inj": {
+      "name": "Target Injection Contrastive Loss Weight",
+      "results": {
+        "0.0": "Success",
+        "0.05": "Success",
+        "0.1": "Success",
+        "0.2": "Success",
+        "0.3": "Success"
+      }
+    },
+    "scale_weights": {
+      "name": "Multi-Scale Layer Weights",
+      "results": {
+        "[0.1, 0.3, 0.6]": "Success",
+        "[0.33, 0.33, 0.34]": "Success",
+        "[0.6, 0.3, 0.1]": "Success",
+        "[0.0, 0.0, 1.0]": "Success",
+        "[0.2, 0.4, 0.4]": "Success",
+        "[0.5, 0.3, 0.2]": "Success",
+        "[0.0, 0.5, 0.5]": "Success"
+      }
+    }
+  }
+}
