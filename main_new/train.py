@@ -56,6 +56,9 @@ def main(args):
         elif dataset_type == "boiler":
             log("AUPRC score is : %.4f " % (metrics_pred["avg_prc"]))
             log("Best F1 score is : %.4f " % (metrics_pred["best_f1"]))
+        elif dataset_type == "sensor":
+            log("AUPRC score is : %.4f " % (metrics_pred["avg_prc"]))
+            log("Best F1 score is : %.4f " % (metrics_pred["best_f1"]))
         else:
             log("Accuracy score is : %.4f " % (metrics_pred["acc"]))
             log("Macro F1 score is : %.4f " % (metrics_pred["mac_f1"]))
@@ -187,6 +190,8 @@ def main(args):
                     cur_val_score = metrics_pred_val_src["best_f1"]
                 elif dataset_type == "smd":
                     cur_val_score = metrics_pred_val_trg["best_f1"]
+                elif dataset_type == "sensor":
+                    cur_val_score = metrics_pred_val_src["best_f1"]
                 else:
                     cur_val_score = metrics_pred_val_src["mac_f1"]
                 

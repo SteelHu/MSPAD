@@ -22,6 +22,7 @@ def get_logger(log_file):
 dict_metrics = {"smd": {"acc": accuracy_score, "mac_f1": f1_score, "w_f1": f1_score},
                 "msl": {"acc": accuracy_score, "mac_f1": f1_score, "w_f1": f1_score},
                 "boiler": {"acc": accuracy_score, "mac_f1": f1_score, "w_f1": f1_score},
+                "sensor": {"acc": accuracy_score, "mac_f1": f1_score, "w_f1": f1_score},
                 }
 
 
@@ -32,6 +33,8 @@ def get_dataset_type(args):
         return "msl"
     elif "Boiler" in args.path_src:
         return "boiler"
+    elif "FWUAV" in args.path_src:
+        return "sensor"
     else:
         return "sensor"
 
@@ -94,7 +97,7 @@ class PredictionMeter(object):
 
         # Initialize the metric dictionary to be returned
         self.dict_metrics = {}
-        self.dict_metrics = dict_metrics[self.dataset_type]
+        self.dict_metrics = dict_metrics.get(self.dataset_type, {})
 
     def update(self, target, output, id_patient=None, stay_hour=None):
         if self.dataset_type == "smd":
@@ -102,6 +105,9 @@ class PredictionMeter(object):
         elif self.dataset_type == "msl":
             output_np = output.detach().cpu().numpy().flatten()
         elif self.dataset_type == "boiler":
+            output_np = output.detach().cpu().numpy().flatten()
+        elif self.dataset_type == "sensor":
+            # 对于传感器数据，直接flatten即可
             output_np = output.detach().cpu().numpy().flatten()
         else:
             output_np = output.detach().cpu().numpy().argmax(axis=1).flatten()
@@ -143,8 +149,11 @@ class PredictionMeter(object):
         return_dict["best_thr"] = thr[best_f1_index]
         return_dict["avg_prc"] = avg_prc
         return_dict["roc_auc"] = roc_auc
-        output = np.where(output[:] > thr[best_f1_index], 1, 0)
-        return_dict["macro_F1"] = f1_score(target, output, average="macro")
+        output_binary = np.where(output[:] > thr[best_f1_index], 1, 0)
+        return_dict["mac_f1"] = f1_score(target, output_binary, average="macro")
+        return_dict["w_f1"] = f1_score(target, output_binary, average="weighted")
+        return_dict["acc"] = accuracy_score(target, output_binary)
+
         return return_dict
 
         """

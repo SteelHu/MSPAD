@@ -28,18 +28,20 @@ MSPAD消融实验脚本
 使用方法：
     # 运行所有消融实验
     python experiments/ablation_experiments.py
-    
+
     # 运行特定组
     python experiments/ablation_experiments.py --group core  # 核心组件消融
     python experiments/ablation_experiments.py --group multi_scale  # 多尺度分析
     python experiments/ablation_experiments.py --group loss  # 损失函数消融
-    
+
     # 指定数据集和源-目标对
     python experiments/ablation_experiments.py --dataset MSL --src F-5 --trg C-1
-    
+    python experiments/ablation_experiments.py --dataset FWUAV --src 1 --trg 6
+
     # 只指定源域，对所有其他文件作为目标域运行
     python experiments/ablation_experiments.py --dataset MSL --src F-5 --all-targets
-    
+    python experiments/ablation_experiments.py --dataset FWUAV --src 1 --all-targets
+
     # 跳过已完成的实验（断点续传）
     python experiments/ablation_experiments.py --skip-completed
 """
@@ -465,13 +467,29 @@ def get_boiler_files() -> List[str]:
     if not os.path.exists(boiler_dir):
         print_colored(f"Error: Boiler dataset directory not found: {boiler_dir}", Colors.RED)
         return []
-    
+
     files = []
     for file in os.listdir(boiler_dir):
         if file.endswith('.csv'):
             file_id = file.replace('.csv', '')
             files.append(file_id)
-    
+
+    return sorted(files)
+
+
+def get_fwuav_files() -> List[str]:
+    """获取FWUAV数据集的所有文件列表"""
+    fwuav_dir = 'datasets/FWUAV'
+    if not os.path.exists(fwuav_dir):
+        print_colored(f"Error: FWUAV dataset directory not found: {fwuav_dir}", Colors.RED)
+        return []
+
+    files = []
+    for item in os.listdir(fwuav_dir):
+        item_path = os.path.join(fwuav_dir, item)
+        if os.path.isdir(item_path) and item.isdigit():
+            files.append(item)
+
     return sorted(files)
 
 
@@ -483,6 +501,8 @@ def get_dataset_files(dataset: str) -> List[str]:
         return get_smd_files()
     elif dataset == "Boiler":
         return get_boiler_files()
+    elif dataset == "FWUAV":
+        return get_fwuav_files()
     else:
         print_colored(f"Unknown dataset: {dataset}", Colors.RED)
         return []
@@ -514,6 +534,14 @@ def get_dataset_config(dataset: str) -> dict:
             "dropout": 0.2,
             "num_channels_TCN": "128-128-128",
             "hidden_dim_MLP": 256,
+        },
+        "FWUAV": {
+            "path_src": "datasets/FWUAV",
+            "path_trg": "datasets/FWUAV",
+            "batch_size": 128,
+            "dropout": 0.1,
+            "num_channels_TCN": "64-128-256",
+            "hidden_dim_MLP": 512,
         },
     }
     return configs.get(dataset, {})
@@ -659,10 +687,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     
-    parser.add_argument("--dataset", type=str, default="MSL", choices=["MSL", "SMD", "Boiler"],
+    parser.add_argument("--dataset", type=str, default="MSL", choices=["MSL", "SMD", "Boiler", "FWUAV"],
                        help="Dataset name (default: MSL)")
     parser.add_argument("--src", type=str, default="F-5",
-                       help="Source domain ID (default: F-5)")
+                       help="Source domain ID (default: F-5 for MSL, 1 for FWUAV)")
     parser.add_argument("--trg", type=str, default=None,
                        help="Target domain ID (default: None, requires --all-targets if not specified)")
     parser.add_argument("--all-targets", action="store_true",
@@ -677,7 +705,11 @@ def main():
                        help="Skip completed experiments (default: True)")
     
     args = parser.parse_args()
-    
+
+    # 设置数据集特定的默认参数
+    if args.dataset == "FWUAV" and args.src == "F-5":
+        args.src = "1"  # FWUAV默认使用场景1作为源域
+
     # 检查参数有效性
     if not args.all_targets and args.trg is None:
         print_colored("Error: Either --trg or --all-targets must be specified", Colors.RED)

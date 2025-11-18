@@ -173,10 +173,18 @@ DATASET_CONFIGS = {
     "Boiler": {
         "path_src": "datasets/Boiler",
         "path_trg": "datasets/Boiler",
-        "batch_size": 256,  
+        "batch_size": 256,
         "dropout": 0.2,
         "num_channels_TCN": "128-128-128",
         "hidden_dim_MLP": 256,
+    },
+    "FWUAV": {
+        "path_src": "datasets/FWUAV",
+        "path_trg": "datasets/FWUAV",
+        "batch_size": 128,
+        "dropout": 0.1,
+        "num_channels_TCN": "64-128-256",
+        "hidden_dim_MLP": 512,
     },
 }
 
@@ -209,6 +217,7 @@ def get_summary_csv_path(dataset: str, src: str) -> str:
         "msl": f'MSPAD_MSL_{src}.csv',
         "smd": f'MSPAD_SMD_{src}.csv',
         "boiler": f'MSPAD_Boiler_{src}.csv',
+        "fwuav": f'MSPAD_FWUAV_{src}.csv',
     }
     fname = fname_map.get(dataset_lower, f'MSPAD_test_{src}.csv')
     return os.path.join(SUMMARY_DIR, fname)
@@ -424,7 +433,7 @@ def main():
     )
     
     parser.add_argument("--dataset", type=str, default="MSL",
-                       choices=["MSL", "SMD", "Boiler"],
+                       choices=["MSL", "SMD", "Boiler", "FWUAV"],
                        help="Dataset name (default: MSL)")
     parser.add_argument("--src", type=str, default="F-5",
                        help="Source domain ID (default: F-5)")

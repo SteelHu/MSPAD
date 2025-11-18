@@ -20,7 +20,7 @@ class PredictionLoss(object):
 
     #Return the appropriate prediction loss for the related task
     def get_prediction_loss(self, output, target):
-        if self.dataset_type == "smd" or self.dataset_type == "msl":
+        if self.dataset_type == "smd" or self.dataset_type == "msl" or self.dataset_type == "sensor":
             target = target.float()
             batch_loss_weights = target * self.loss_weights[1] + (1 - target) * self.loss_weights[0]
             loss = F.binary_cross_entropy(output, target, weight = batch_loss_weights)

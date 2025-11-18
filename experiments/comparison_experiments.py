@@ -93,13 +93,29 @@ def get_boiler_files() -> List[str]:
     if not os.path.exists(boiler_dir):
         print_colored(f"Error: Boiler dataset directory not found: {boiler_dir}", Colors.RED)
         return []
-    
+
     files = []
     for file in os.listdir(boiler_dir):
         if file.endswith('.csv'):
             file_id = file.replace('.csv', '')
             files.append(file_id)
-    
+
+    return sorted(files)
+
+
+def get_fwuav_files() -> List[str]:
+    """获取FWUAV数据集的所有文件列表"""
+    fwuav_dir = 'datasets/FWUAV'
+    if not os.path.exists(fwuav_dir):
+        print_colored(f"Error: FWUAV dataset directory not found: {fwuav_dir}", Colors.RED)
+        return []
+
+    files = []
+    for item in os.listdir(fwuav_dir):
+        item_path = os.path.join(fwuav_dir, item)
+        if os.path.isdir(item_path) and item.isdigit():
+            files.append(item)
+
     return sorted(files)
 
 
@@ -111,6 +127,8 @@ def get_dataset_files(dataset: str) -> List[str]:
         return get_smd_files()
     elif dataset == "Boiler":
         return get_boiler_files()
+    elif dataset == "FWUAV":
+        return get_fwuav_files()
     else:
         print_colored(f"Unknown dataset: {dataset}", Colors.RED)
         return []
@@ -142,6 +160,14 @@ def get_dataset_config(dataset: str) -> dict:
             "dropout": 0.2,
             "num_channels_TCN": "128-128-128",
             "hidden_dim_MLP": 256,
+        },
+        "FWUAV": {
+            "path_src": "datasets/FWUAV",
+            "path_trg": "datasets/FWUAV",
+            "batch_size": 128,
+            "dropout": 0.1,
+            "num_channels_TCN": "64-128-256",
+            "hidden_dim_MLP": 512,
         },
     }
     return configs.get(dataset, {})
@@ -181,6 +207,9 @@ def get_algorithm_config(algo_name: str) -> dict:
             "eval_script": "main_cluda/eval.py",
             "exp_folder_suffix": "cluda",
             "result_file_prefix": "CLUDA_",
+            "batch_size": 128,  # CLUDA需要与数据集兼容的batch_size
+            "num_channels_TCN": "64-64-64-64-64",  # CLUDA使用自己的网络配置
+            "kernel_size_TCN": 3,  # CLUDA使用自己的卷积核大小
             "extra_params": [
                 "--weight_loss_disc", "1.0",
                 "--weight_loss_pred", "1.0",
@@ -233,8 +262,8 @@ def is_experiment_completed(
         else:
             result_file = f"{algo_name}_{dataset}_{src}.csv"
         
-        # 结果文件保存在experiment_results文件夹中
-        result_path = os.path.join("experiment_results", result_file)
+        # 结果文件保存在experiment_results/对比实验文件夹中
+        result_path = os.path.join("experiment_results", "对比实验", result_file)
         if os.path.exists(result_path):
             try:
                 df = pd.read_csv(result_path)
@@ -258,6 +287,7 @@ def run_experiment(
     learning_rate: float = 1e-4,
     seed: int = 1234,
     skip_if_completed: bool = False,
+    continue_on_error: bool = False,
 ) -> bool:
     """运行单个实验"""
     
@@ -276,7 +306,11 @@ def run_experiment(
         print_colored(f"Unknown algorithm: {algo_name}", Colors.RED)
         return False
     
-    final_batch_size = batch_size if batch_size is not None else dataset_config["batch_size"]
+    # 优先使用算法特定的batch_size，如果没有则使用数据集默认的或函数参数指定的
+    if "batch_size" in algo_config:
+        final_batch_size = algo_config["batch_size"]
+    else:
+        final_batch_size = batch_size if batch_size is not None else dataset_config["batch_size"]
     exp_folder = f"{dataset}_{algo_config['exp_folder_suffix']}"
     
     # 构建训练命令
@@ -288,9 +322,9 @@ def run_experiment(
         "--eval_batch_size", str(final_batch_size),
         "--learning_rate", str(learning_rate),
         "--dropout", str(dataset_config["dropout"]),
-        "--num_channels_TCN", dataset_config["num_channels_TCN"],
+        "--num_channels_TCN", algo_config.get("num_channels_TCN", dataset_config["num_channels_TCN"]),
         "--dilation_factor_TCN", "3",
-        "--kernel_size_TCN", "7",
+        "--kernel_size_TCN", str(algo_config.get("kernel_size_TCN", 7)),
         "--hidden_dim_MLP", str(dataset_config["hidden_dim_MLP"]),
         "--queue_size", "98304",
         "--momentum", "0.99",
@@ -309,14 +343,20 @@ def run_experiment(
     print_colored(f"\n{'='*60}", Colors.CYAN)
     print_colored(f"  Training: {algo_name} on {dataset} ({src} -> {trg})", Colors.CYAN)
     print_colored(f"{'='*60}", Colors.CYAN)
-    
+
     try:
         result = subprocess.run(train_cmd, check=False)
         if result.returncode != 0:
             print_colored(f"❌ Training failed: {algo_name} on {dataset} ({src} -> {trg})", Colors.RED)
+            if continue_on_error:
+                print_colored(f"⚠ Continuing with other algorithms despite training failure", Colors.YELLOW)
+                return False
             return False
     except Exception as e:
         print_colored(f"❌ Training error: {e}", Colors.RED)
+        if continue_on_error:
+            print_colored(f"⚠ Continuing with other algorithms despite training error", Colors.YELLOW)
+            return False
         return False
     
     # 构建评估命令
@@ -327,19 +367,30 @@ def run_experiment(
         "--id_src", src,
         "--id_trg", trg,
     ]
+
+    # For CLUDA, keep the model after evaluation (don't delete it)
+    if algo_name == "cluda":
+        eval_cmd.append("--keep_model")
+    # 所有算法默认都会删除模型文件以节省空间
     
     # 运行评估
     print_colored(f"\n{'='*60}", Colors.CYAN)
     print_colored(f"  Evaluating: {algo_name} on {dataset} ({src} -> {trg})", Colors.CYAN)
     print_colored(f"{'='*60}", Colors.CYAN)
-    
+
     try:
         result = subprocess.run(eval_cmd, check=False)
         if result.returncode != 0:
             print_colored(f"❌ Evaluation failed: {algo_name} on {dataset} ({src} -> {trg})", Colors.RED)
+            if continue_on_error:
+                print_colored(f"⚠ Continuing with other algorithms despite evaluation failure", Colors.YELLOW)
+                return False
             return False
     except Exception as e:
         print_colored(f"❌ Evaluation error: {e}", Colors.RED)
+        if continue_on_error:
+            print_colored(f"⚠ Continuing with other algorithms despite evaluation error", Colors.YELLOW)
+            return False
         return False
     
     print_colored(f"✓ Completed: {algo_name} on {dataset} ({src} -> {trg})", Colors.GREEN)
@@ -355,6 +406,7 @@ def run_comparison(
     learning_rate: float = 1e-4,
     seed: int = 1234,
     skip_if_completed: bool = False,
+    continue_on_error: bool = True,
 ) -> dict:
     """运行三模型对比实验"""
     
@@ -364,10 +416,11 @@ def run_comparison(
     print_colored("="*60, Colors.MAGENTA)
     
     algorithms = ["dacad", "MSPAD", "cluda"]
+
     results = {}
-    
+
     for i, algo in enumerate(algorithms, 1):
-        print_colored(f"\n[{i}/3] Running {algo}", Colors.CYAN)
+        print_colored(f"\n[{i}/{len(algorithms)}] Running {algo}", Colors.CYAN)
         success = run_experiment(
             dataset=dataset,
             algo_name=algo,
@@ -378,16 +431,27 @@ def run_comparison(
             learning_rate=learning_rate,
             seed=seed,
             skip_if_completed=skip_if_completed,
+            continue_on_error=continue_on_error,
         )
         results[algo] = success
     
     # 打印总结
     print_colored("\n" + "="*60, Colors.GREEN)
     print_colored("Comparison Summary:", Colors.GREEN)
+    successful_count = sum(1 for success in results.values() if success)
+    total_count = len(results)
     for algo, success in results.items():
         status = "✓ Success" if success else "✗ Failed"
         color = Colors.GREEN if success else Colors.RED
         print_colored(f"  {algo:10s}: {status}", color)
+
+    if successful_count == total_count:
+        print_colored(f"All {total_count} algorithms completed successfully!", Colors.GREEN)
+    elif successful_count > 0:
+        print_colored(f"{successful_count}/{total_count} algorithms completed successfully.", Colors.YELLOW)
+    else:
+        print_colored(f"All {total_count} algorithms failed.", Colors.RED)
+
     print_colored("="*60 + "\n", Colors.GREEN)
     
     return results
@@ -401,20 +465,23 @@ def main():
 Examples:
   # 单个实验
   python experiments/comparison_experiments.py --dataset MSL --src F-5 --trg C-1
-  
+  python experiments/comparison_experiments.py --dataset FWUAV --src 1 --trg 6
+
   # 指定源域，所有其他文件为目标域
   python experiments/comparison_experiments.py --dataset MSL --src F-5 --all-targets
-  
+  python experiments/comparison_experiments.py --dataset FWUAV --src 1 --all-targets
+
   # 断点续传：跳过已完成的实验
   python experiments/comparison_experiments.py --dataset SMD --src 1-1 --all-targets --skip-completed
-  
+  python experiments/comparison_experiments.py --dataset FWUAV --src 1 --all-targets --skip-completed
+
   # 运行所有数据集的所有组合
   python experiments/comparison_experiments.py --all-datasets --all-combinations
         """
     )
     
-    parser.add_argument("--dataset", type=str, choices=["MSL", "SMD", "Boiler"],
-                       help="Dataset name: MSL, SMD, or Boiler")
+    parser.add_argument("--dataset", type=str, choices=["MSL", "SMD", "Boiler", "FWUAV"],
+                       help="Dataset name: MSL, SMD, Boiler, or FWUAV")
     parser.add_argument("--src", type=str, help="Source domain ID")
     parser.add_argument("--trg", type=str, help="Target domain ID")
     parser.add_argument("--all-targets", action="store_true",
@@ -429,13 +496,17 @@ Examples:
                        help="Batch size (default: dataset-specific)")
     parser.add_argument("--learning_rate", type=float, default=1e-4,
                        help="Learning rate (default: 1e-4)")
-    parser.add_argument("--seed", type=int, default=1234,
-                       help="Random seed (default: 1234)")
+    parser.add_argument("--seed", type=int, default=42,
+                       help="Random seed (default: 42)")
     parser.add_argument("--skip-completed", action="store_true",
                        help="Skip experiments that are already completed")
     
     args = parser.parse_args()
-    
+
+    # 设置数据集特定的默认参数
+    if args.dataset == "FWUAV" and not args.src:
+        args.src = "1"  # FWUAV默认使用场景1作为源域
+
     # 打印启动信息
     print_colored("="*60, Colors.CYAN)
     print_colored("MSPAD对比实验：与DACAD和CLUDA对比", Colors.CYAN)

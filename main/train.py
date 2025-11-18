@@ -81,6 +81,9 @@ def main(args):
         elif dataset_type == "boiler":
             log("AUPRC score is : %.4f " % (metrics_pred["avg_prc"]))
             log("Best F1 score is : %.4f " % (metrics_pred["best_f1"]))
+        elif dataset_type == "sensor":  # FWUAV uses sensor type
+            log("AUPRC score is : %.4f " % (metrics_pred["avg_prc"]))
+            log("Best F1 score is : %.4f " % (metrics_pred["best_f1"]))
         else:
             log("Accuracy score is : %.4f " % (metrics_pred["acc"]))
             log("Macro F1 score is : %.4f " % (metrics_pred["mac_f1"]))

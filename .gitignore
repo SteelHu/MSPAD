@@ -13,3 +13,5 @@ main/__pycache__/*
 
 results/*
 datasets/*
+experiment_results/
+results/

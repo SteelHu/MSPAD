@@ -37,15 +37,17 @@ def get_algorithm(args, input_channels_dim, input_static_dim):
     """
     if args.algo_name == "MSPAD":
         return MSPAD(args, input_channels_dim, input_static_dim)
+    elif args.algo_name == "dacad":
+        # 导入原始DACAD算法
+        import sys
+        import importlib.util
+        main_algorithms_path = os.path.join(os.path.dirname(__file__), '..', 'main', 'algorithms.py')
+        spec = importlib.util.spec_from_file_location("main_algorithms", main_algorithms_path)
+        main_algorithms = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(main_algorithms)
+        return main_algorithms.DACAD(args, input_channels_dim, input_static_dim)
     else:
-        # 如果使用其他算法，尝试从原始algorithms导入
-        try:
-            import sys
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'main'))
-            from algorithms import get_algorithm as get_original_algorithm
-            return get_original_algorithm(args, input_channels_dim, input_static_dim)
-        except:
-            raise ValueError(f"Unknown algorithm: {args.algo_name}")
+        raise ValueError(f"Unknown algorithm: {args.algo_name}")
 
 
 def get_num_channels(args):
@@ -78,6 +80,8 @@ class Base_Algorithm(nn.Module):
         elif self.dataset_type == "msl":
             self.main_pred_metric = "avg_prc"
         elif self.dataset_type == "boiler":
+            self.main_pred_metric = "avg_prc"
+        elif self.dataset_type == "sensor":
             self.main_pred_metric = "avg_prc"
         else:
             self.main_pred_metric = "mac_f1"

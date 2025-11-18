@@ -1466,20 +1466,29 @@ class CLUDA(Base_Algorithm):
         seq_q_trg = self.concat_mask(seq_q_trg, seq_mask_q_trg, self.args.use_mask)
         seq_k_trg = self.concat_mask(seq_k_trg, seq_mask_k_trg, self.args.use_mask)
 
-        # compute output
-        output_s, target_s, output_t, target_t, output_ts, target_ts, output_disc, target_disc, pred_s = self.model(seq_q_src, seq_k_src, sample_batched_src.get('static'), seq_q_trg, seq_k_trg, sample_batched_trg.get('static'), alpha)
+        # compute output - only in training mode or when we need full forward pass
+        if self.training:
+            # Training mode: compute all contrastive losses
+            output_s, target_s, output_t, target_t, output_ts, target_ts, output_disc, target_disc, pred_s = self.model(seq_q_src, seq_k_src, sample_batched_src.get('static'), seq_q_trg, seq_k_trg, sample_batched_trg.get('static'), alpha)
 
-        # Compute all losses
-        loss_s = self.criterion_CL(output_s, target_s)
-        loss_t = self.criterion_CL(output_t, target_t)
-        loss_ts = self.criterion_CL(output_ts, target_ts)
-        loss_disc = F.binary_cross_entropy(output_disc, target_disc)
+            # Compute all losses
+            loss_s = self.criterion_CL(output_s, target_s)
+            loss_t = self.criterion_CL(output_t, target_t)
+            loss_ts = self.criterion_CL(output_ts, target_ts)
+            loss_disc = F.binary_cross_entropy(output_disc, target_disc)
 
-        # Task classification  Loss
-        src_cls_loss = self.pred_loss.get_prediction_loss(pred_s, sample_batched_src['label'])
+            # Task classification  Loss
+            src_cls_loss = self.pred_loss.get_prediction_loss(pred_s, sample_batched_src['label'])
 
-        loss = self.args.weight_loss_src*loss_s + self.args.weight_loss_trg*loss_t + \
-                    self.args.weight_loss_ts*loss_ts + self.args.weight_loss_disc*loss_disc + self.args.weight_loss_pred*src_cls_loss
+            loss = self.args.weight_loss_src*loss_s + self.args.weight_loss_trg*loss_t + \
+                        self.args.weight_loss_ts*loss_ts + self.args.weight_loss_disc*loss_disc + self.args.weight_loss_pred*src_cls_loss
+        else:
+            # Validation mode: only compute prediction
+            pred_s = self.model.predict(seq_q_src, sample_batched_src.get('static'), is_target=False)
+
+            # Set dummy losses for validation (not used)
+            loss_s = loss_t = loss_ts = loss_disc = src_cls_loss = loss = torch.tensor(0.0).to(pred_s.device)
+            output_s = output_t = output_ts = output_disc = target_s = target_t = target_ts = target_disc = torch.tensor([]).to(pred_s.device)
 
 
         #If in training mode, do the backprop
@@ -1491,25 +1500,30 @@ class CLUDA(Base_Algorithm):
             self.optimizer.step()
 
 
-        # acc1/acc5 are (K+1)-way contrast classifier accuracy
-        # measure accuracy and record loss
-        acc1 = accuracy(output_s, target_s, topk=(1, ))
-        self.losses_s.update(loss_s.item(), seq_q_src.size(0))
-        self.top1_s.update(acc1[0][0], seq_q_src.size(0))
-        
-        acc1 = accuracy(output_t, target_t, topk=(1, ))
-        self.losses_t.update(loss_t.item(), seq_q_trg.size(0))
-        self.top1_t.update(acc1[0][0], seq_q_trg.size(0))
+        # Update metrics only when outputs are available (training mode)
+        if self.training:
+            # acc1/acc5 are (K+1)-way contrast classifier accuracy
+            # measure accuracy and record loss
+            acc1 = accuracy(output_s, target_s, topk=(1, ))
+            self.losses_s.update(loss_s.item(), seq_q_src.size(0))
+            self.top1_s.update(acc1[0][0], seq_q_src.size(0))
 
-        acc1 = accuracy(output_ts, target_ts, topk=(1, ))
-        self.losses_ts.update(loss_t.item(), seq_q_trg.size(0))
-        self.top1_ts.update(acc1[0][0], seq_q_trg.size(0))
-        
-        acc1 = accuracy_score(output_disc.detach().cpu().numpy().flatten()>0.5, target_disc.detach().cpu().numpy().flatten())
-        self.losses_disc.update(loss_disc.item(), output_disc.size(0))
-        self.top1_disc.update(acc1, output_disc.size(0))
-        
-        self.losses_pred.update(src_cls_loss.item(), seq_q_src.size(0))
+            acc1 = accuracy(output_t, target_t, topk=(1, ))
+            self.losses_t.update(loss_t.item(), seq_q_trg.size(0))
+            self.top1_t.update(acc1[0][0], seq_q_trg.size(0))
+
+            acc1 = accuracy(output_ts, target_ts, topk=(1, ))
+            self.losses_ts.update(loss_ts.item(), seq_q_trg.size(0))  # Fixed: was loss_t.item()
+            self.top1_ts.update(acc1[0][0], seq_q_trg.size(0))
+
+            acc1 = accuracy_score(output_disc.detach().cpu().numpy().flatten()>0.5, target_disc.detach().cpu().numpy().flatten())
+            self.losses_disc.update(loss_disc.item(), output_disc.size(0))
+            self.top1_disc.update(acc1, output_disc.size(0))
+
+            self.losses_pred.update(src_cls_loss.item(), seq_q_src.size(0))
+        else:
+            # In validation mode, only update prediction loss
+            self.losses_pred.update(0.0, seq_q_src.size(0))  # Dummy value for validation
 
         pred_meter_src = PredictionMeter(self.args)
 
@@ -1519,7 +1533,9 @@ class CLUDA(Base_Algorithm):
 
         self.score_pred.update(metrics_pred_src[self.main_pred_metric], sample_batched_src['sequence'].size(0))
 
-        self.losses.update(loss.item(), sample_batched_src['sequence'].size(0))
+        # Update total loss (use 0 for validation since losses are not computed)
+        total_loss = loss.item() if self.training else 0.0
+        self.losses.update(total_loss, sample_batched_src['sequence'].size(0))
 
         if not self.training:
             #keep track of prediction results (of source) explicitly

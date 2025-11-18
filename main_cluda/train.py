@@ -83,10 +83,11 @@ def main(args):
             log("AUPRC score is : %.4f " % (metrics_pred["avg_prc"]))
             log("Best F1 score is : %.4f " % (metrics_pred["best_f1"]))
         #In case dataset type is sensor
-        else:  
-            log("Accuracy score is : %.4f " % (metrics_pred["acc"]))
-            log("Macro F1 score is : %.4f " % (metrics_pred["mac_f1"]))
-            log("Weighted F1 score is : %.4f " % (metrics_pred["w_f1"]))
+        else:
+            log("AUPRC score is : %.4f " % (metrics_pred["avg_prc"]))
+            log("Best F1 score is : %.4f " % (metrics_pred["best_f1"]))
+            log("Best Prec score is : %.4f " % (metrics_pred["best_prec"]))
+            log("Best Rec score is : %.4f " % (metrics_pred["best_rec"]))
 
 
     batch_size = args.batch_size
@@ -150,19 +151,34 @@ def main(args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
 
-    for i in range(args.num_epochs):
+    # Determine training mode: step-based or epoch-based
+    # Priority: num_epochs > num_steps (when both are set, respect user's epoch limit)
+    if hasattr(args, 'num_epochs') and args.num_epochs > 0:
+        # Epoch-based training (respect user's epoch limit)
+        max_steps = float('inf')
+        max_epochs = args.num_epochs
+    elif hasattr(args, 'num_steps') and args.num_steps > 0:
+        # Step-based training (CLUDA style) - allow unlimited epochs
+        max_steps = args.num_steps
+        max_epochs = float('inf')
+    else:
+        # Default fallback
+        max_steps = float('inf')
+        max_epochs = 20  # Default epochs
+
+    for i in range(min(max_epochs, 1000)):  # Safety limit to prevent infinite loops
 
         end = time.time()
-        
+
         dataloader_trg = DataLoader(dataset_trg, batch_size=batch_size,
                             shuffle=True, num_workers=0)
         dataloader_iterator = iter(dataloader_trg)
-        
+
         for i_batch, sample_batched_src in enumerate(dataloader_src):
             #Current model does not support smaller batches than batch_size (due to queue ptr)
             if len(sample_batched_src['sequence']) != batch_size:
                 continue
-                
+
             #Since AUMC is a smaller dataset, if we are out of batch, initialize iterator once again.
             try:
                 sample_batched_trg = next(dataloader_iterator)
@@ -171,11 +187,11 @@ def main(args):
                                     shuffle=True, num_workers=0)
                 dataloader_iterator = iter(dataloader_trg)
                 sample_batched_trg = next(dataloader_iterator)
-            
+
             #Current model does not support smaller batches than batch_size (due to queue ptr)
             if len(sample_batched_trg['sequence']) != batch_size:
                 continue
-            
+
             # measure data loading time
             data_time.update(time.time() - end)
 
@@ -184,7 +200,8 @@ def main(args):
 
             count_step+=1
 
-            if count_step >= args.num_steps+1:
+            # Check if we've reached the maximum steps (for step-based training)
+            if count_step >= max_steps:
                 break
 
             # measure elapsed time
@@ -217,12 +234,12 @@ def main(args):
                 dataloader_val_src = DataLoader(dataset_val_src, batch_size=eval_batch_size,
                                     shuffle=True, num_workers=0)
                 dataloader_val_src_iterator = iter(dataloader_val_src)
-                
+
                 dataloader_val_trg = DataLoader(dataset_val_trg, batch_size=eval_batch_size,
                                     shuffle=True, num_workers=0)
                 dataloader_val_trg_iterator = iter(dataloader_val_trg)
-                
-                
+
+
                 for i_batch_val in range(num_val_iteration):
                     sample_batched_val_src = next(dataloader_val_src_iterator)
                     sample_batched_val_trg = next(dataloader_val_trg_iterator)
@@ -231,7 +248,7 @@ def main(args):
                     data_time.update(time.time() - end)
 
                     #Validation step of algorithm
-                    algorithm.step(sample_batched_val_src, sample_batched_val_trg, count_step=count_step)
+                    algorithm.step(sample_batched_val_src, sample_batched_trg, count_step=count_step)
 
                 progress = ProgressMeter(
                 num_val_iteration,
@@ -240,7 +257,7 @@ def main(args):
 
                 log("VALIDATION RESULTS")
                 log(progress.display(i_batch_val+1, is_logged=True))
-                
+
                 log("VALIDATION SOURCE PREDICTIONS")
 
                 metrics_pred_val_src = algorithm.pred_meter_val_src.get_metrics()
@@ -292,10 +309,25 @@ def main(args):
                 batch_time = AverageMeter('Time', ':6.3f')
                 data_time = AverageMeter('Data', ':6.3f')
                 end = time.time()
-                
-        else:
-            continue
-        break
+
+        # Check if we've reached the maximum steps (for step-based training)
+        if count_step >= max_steps:
+            break
+
+        # Safety check to prevent infinite loops
+        if i >= 999:
+            log("Warning: Reached maximum epoch limit, stopping training")
+            break
+
+    # Save the final model after training completes (ensure at least one model is saved)
+    if best_val_score > -100:  # Only save if we have a valid score
+        log("Training completed. Saving final model...")
+        algorithm.save_state(experiment_folder_path)
+        log("Final model saved!")
+    else:
+        log("Warning: No valid model was saved during training. Saving current model as fallback...")
+        algorithm.save_state(experiment_folder_path)
+        log("Fallback model saved!")
 
 # parse command-line arguments and execute the main method
 if __name__ == '__main__':

@@ -50,6 +50,11 @@ def main(args):
             log("Best F1 score is : %.4f " % (metrics_pred["best_f1"]))
             log("Best Prec score is : %.4f " % (metrics_pred["best_prec"]))
             log("Best Rec score is : %.4f " % (metrics_pred["best_rec"]))
+        elif dataset_type == "sensor":  # FWUAV uses sensor type
+            log("AUPRC score is : %.4f " % (metrics_pred["avg_prc"]))
+            log("Best F1 score is : %.4f " % (metrics_pred["best_f1"]))
+            log("Best Prec score is : %.4f " % (metrics_pred["best_prec"]))
+            log("Best Rec score is : %.4f " % (metrics_pred["best_rec"]))
         else:
             log("Accuracy score is : %.4f " % (metrics_pred["acc"]))
             log("Macro F1 score is : %.4f " % (metrics_pred["mac_f1"]))
@@ -119,7 +124,7 @@ def main(args):
     df_trg.insert(1, 'trg_id', args.id_trg)
 
     # 创建结果汇总文件夹
-    results_summary_dir = 'experiment_results'
+    results_summary_dir = 'experiment_results/对比实验'
     if not os.path.exists(results_summary_dir):
         os.makedirs(results_summary_dir)
     
