@@ -231,10 +231,10 @@ class MSPAD(Base_Algorithm):
         
         # ========== 第四步：计算各项损失 ==========
         
-        # 1️⃣ 单尺度域判别器损失（原有）
-        loss_disc = F.binary_cross_entropy(output_disc, target_disc)
+        # 注意：MSPAD不使用单尺度域对抗损失（loss_disc），已由多尺度域对抗损失（ms_disc_loss）替代
+        # 虽然模型仍输出output_disc和target_disc（保持接口兼容），但不计算loss_disc
         
-        # 2️⃣ 多尺度域对抗损失（新增）
+        # 1️⃣ 多尺度域对抗损失（MSPAD的核心改进）
         ms_disc_loss = 0
         if len(ms_disc_outputs_s) > 0 and len(ms_disc_outputs_t) > 0:
             domain_labels_s = torch.ones(len(q_s_repr), 1).to(device=q_s_repr.device)
@@ -303,13 +303,17 @@ class MSPAD(Base_Algorithm):
         self.losses_sup.update(src_sup_cont_loss.item(), seq_q_src.size(0))
         self.losses_inj.update(trg_inj_cont_loss.item(), seq_q_trg.size(0))
         
-        acc1 = accuracy_score(
-            output_disc.detach().cpu().numpy().flatten() > 0.5,
-            target_disc.detach().cpu().numpy().flatten()
-        )
-        self.losses_disc.update(loss_disc.item(), output_disc.size(0))
-        self.losses_ms_disc.update(ms_disc_loss.item(), output_disc.size(0))  # 新增
-        self.top1_disc.update(acc1, output_disc.size(0))
+        # 注意：MSPAD不使用单尺度域对抗损失，但保留output_disc和target_disc用于监控（可选）
+        # 如果需要监控单尺度域判别器的性能，可以取消下面的注释
+        # acc1 = accuracy_score(
+        #     output_disc.detach().cpu().numpy().flatten() > 0.5,
+        #     target_disc.detach().cpu().numpy().flatten()
+        # )
+        # self.losses_disc.update(loss_disc.item(), output_disc.size(0))
+        # self.top1_disc.update(acc1, output_disc.size(0))
+        
+        # 多尺度域对抗损失指标（MSPAD的核心指标）
+        self.losses_ms_disc.update(ms_disc_loss.item(), len(q_s_repr) if len(ms_disc_outputs_s) > 0 else 1)
         
         self.losses_pred.update(src_cls_loss.item(), seq_q_src.size(0))
         
@@ -357,9 +361,10 @@ class MSPAD(Base_Algorithm):
     
     def return_metrics(self):
         """返回训练指标"""
+        # 注意：MSPAD不使用losses_disc（单尺度域对抗损失），已由losses_ms_disc替代
         return [
-            self.losses_sup, self.losses_inj, self.losses_disc,
-            self.losses_ms_disc, self.losses_pred, self.losses  # 包含多尺度损失
+            self.losses_sup, self.losses_inj,
+            self.losses_ms_disc, self.losses_pred, self.losses  # 多尺度域对抗损失替代单尺度
         ]
     
     def save_state(self, experiment_folder_path):

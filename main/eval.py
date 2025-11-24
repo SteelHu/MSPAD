@@ -123,8 +123,15 @@ def main(args):
     df_trg.insert(0, 'src_id', args.id_src)
     df_trg.insert(1, 'trg_id', args.id_trg)
 
-    # 创建结果汇总文件夹
-    results_summary_dir = 'experiment_results/对比实验'
+    # 根据experiment_folder判断实验类型，动态决定保存目录
+    # 优先级：sensitivity > ablation > comparison
+    if "Sensitivity" in args.experiment_folder or args.experiment_folder.startswith("sensitivity/"):
+        results_summary_dir = 'experiment_results/sensitivity'
+    elif "Ablation" in args.experiment_folder or args.experiment_folder.startswith("ablation/"):
+        results_summary_dir = 'experiment_results/ablation'
+    else:
+        results_summary_dir = 'experiment_results/comparison'
+    
     if not os.path.exists(results_summary_dir):
         os.makedirs(results_summary_dir)
     

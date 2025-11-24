@@ -125,11 +125,18 @@ def main(args):
     df_trg.insert(0, 'src_id', args.id_src)
     df_trg.insert(1, 'trg_id', saved_args.id_trg)
 
-    # 创建结果汇总文件夹
-    results_summary_dir = 'experiment_results/对比实验'
+    # 根据experiment_folder判断实验类型，动态决定保存目录
+    # 优先级：sensitivity > ablation > comparison
+    if "Sensitivity" in args.experiment_folder or args.experiment_folder.startswith("sensitivity/"):
+        results_summary_dir = 'experiment_results/sensitivity'
+    elif "Ablation" in args.experiment_folder or args.experiment_folder.startswith("ablation/"):
+        results_summary_dir = 'experiment_results/ablation'
+    else:
+        results_summary_dir = 'experiment_results/comparison'
+    
     if not os.path.exists(results_summary_dir):
         os.makedirs(results_summary_dir)
-
+    
     # 根据数据集类型生成汇总文件名，参照DACAD和MSPAD的命名格式
     if dataset_type == "msl":
         fname = 'CLUDA_MSL_' + args.id_src + ".csv"
@@ -139,14 +146,14 @@ def main(args):
         fname = 'CLUDA_Boiler_' + args.id_src + ".csv"
     else:
         fname = 'CLUDA_test_' + args.id_src + ".csv"
-
+    
     # 保存到统一的结果文件夹
     fpath = os.path.join(results_summary_dir, fname)
     if os.path.isfile(fpath):
         df_trg.to_csv(fpath, mode='a', header=False, index=False)
     else:
         df_trg.to_csv(fpath, mode='a', header=True, index=False)
-
+    
     log("Summary results saved to " + fpath)
 
     # 在源域测试集上预测

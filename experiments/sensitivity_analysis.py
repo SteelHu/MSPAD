@@ -136,7 +136,7 @@ SENSITIVITY_CONFIGS = {
         'name': 'Multi-Scale Domain Adversarial Loss Weight',
         'values': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0, 1.5, 5.0],
         'base_config': {
-            'weight_loss_disc': 0.0,
+            # 注意：MSPAD不使用weight_loss_disc（单尺度域对抗损失），已由weight_loss_ms_disc替代
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
             'weight_loss_trg_inj': 0.1,
@@ -148,7 +148,7 @@ SENSITIVITY_CONFIGS = {
         'name': 'Prototypical Network Margin',
         'values': [0.01, 0.1, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 5.0, 10.0, 50.0],
         'base_config': {
-            'weight_loss_disc': 0.0,
+            # 注意：MSPAD不使用weight_loss_disc（单尺度域对抗损失），已由weight_loss_ms_disc替代
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -160,7 +160,7 @@ SENSITIVITY_CONFIGS = {
         'name': 'Source Supervised Contrastive Loss Weight',
         'values': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0, 1.5, 5.0],
         'base_config': {
-            'weight_loss_disc': 0.0,
+            # 注意：MSPAD不使用weight_loss_disc（单尺度域对抗损失），已由weight_loss_ms_disc替代
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_trg_inj': 0.1,
@@ -172,7 +172,7 @@ SENSITIVITY_CONFIGS = {
         'name': 'Target Injection Contrastive Loss Weight',
         'values': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0, 1.5, 5.0],
         'base_config': {
-            'weight_loss_disc': 0.0,
+            # 注意：MSPAD不使用weight_loss_disc（单尺度域对抗损失），已由weight_loss_ms_disc替代
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -192,13 +192,137 @@ SENSITIVITY_CONFIGS = {
             [0.0, 0.5, 0.5],
         ],
         'base_config': {
-            'weight_loss_disc': 0.0,
+            # 注意：MSPAD不使用weight_loss_disc（单尺度域对抗损失），已由weight_loss_ms_disc替代
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
             'weight_loss_trg_inj': 0.1,
             'prototypical_margin': 1.0,
         },
+    },
+    
+    # ========== 模型架构参数 ==========
+    'batch_size': {
+        'name': 'Batch Size',
+        'values': [64, 128, 256, 512],
+        'base_config': {
+            # 损失函数参数（固定）
+            'weight_loss_ms_disc': 0.3,
+            'weight_loss_pred': 1.0,
+            'weight_loss_src_sup': 0.1,
+            'weight_loss_trg_inj': 0.1,
+            'prototypical_margin': 1.0,
+            'scale_weights': [0.1, 0.3, 0.6],
+        },
+        'param_type': 'dataset_config',  # 标记为数据集配置参数
+    },
+    'num_channels_TCN': {
+        'name': 'TCN Channels',
+        'values': [
+            "64-64-64",
+            "64-128-128",
+            "64-128-256",
+            "128-128-128",
+            "128-256-256",
+            "128-256-512",
+            "256-256-256",
+        ],
+        'base_config': {
+            # 损失函数参数（固定）
+            'weight_loss_ms_disc': 0.3,
+            'weight_loss_pred': 1.0,
+            'weight_loss_src_sup': 0.1,
+            'weight_loss_trg_inj': 0.1,
+            'prototypical_margin': 1.0,
+            'scale_weights': [0.1, 0.3, 0.6],
+        },
+        'param_type': 'dataset_config',  # 标记为数据集配置参数
+    },
+    'hidden_dim_MLP': {
+        'name': 'MLP Hidden Dimension',
+        'values': [256, 512, 1024, 2048],
+        'base_config': {
+            # 损失函数参数（固定）
+            'weight_loss_ms_disc': 0.3,
+            'weight_loss_pred': 1.0,
+            'weight_loss_src_sup': 0.1,
+            'weight_loss_trg_inj': 0.1,
+            'prototypical_margin': 1.0,
+            'scale_weights': [0.1, 0.3, 0.6],
+        },
+        'param_type': 'dataset_config',  # 标记为数据集配置参数
+    },
+    'dropout': {
+        'name': 'Dropout Rate',
+        'values': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+        'base_config': {
+            # 损失函数参数（固定）
+            'weight_loss_ms_disc': 0.3,
+            'weight_loss_pred': 1.0,
+            'weight_loss_src_sup': 0.1,
+            'weight_loss_trg_inj': 0.1,
+            'prototypical_margin': 1.0,
+            'scale_weights': [0.1, 0.3, 0.6],
+        },
+        'param_type': 'dataset_config',  # 标记为数据集配置参数
+    },
+    'kernel_size_TCN': {
+        'name': 'TCN Kernel Size',
+        'values': [3, 5, 7, 9, 11],
+        'base_config': {
+            # 损失函数参数（固定）
+            'weight_loss_ms_disc': 0.3,
+            'weight_loss_pred': 1.0,
+            'weight_loss_src_sup': 0.1,
+            'weight_loss_trg_inj': 0.1,
+            'prototypical_margin': 1.0,
+            'scale_weights': [0.1, 0.3, 0.6],
+        },
+        'param_type': 'default_train_params',  # 标记为默认训练参数
+    },
+    'dilation_factor_TCN': {
+        'name': 'TCN Dilation Factor',
+        'values': [2, 3, 4, 5],
+        'base_config': {
+            # 损失函数参数（固定）
+            'weight_loss_ms_disc': 0.3,
+            'weight_loss_pred': 1.0,
+            'weight_loss_src_sup': 0.1,
+            'weight_loss_trg_inj': 0.1,
+            'prototypical_margin': 1.0,
+            'scale_weights': [0.1, 0.3, 0.6],
+        },
+        'param_type': 'default_train_params',  # 标记为默认训练参数
+    },
+    
+    # ========== 训练超参数 ==========
+    'learning_rate': {
+        'name': 'Learning Rate',
+        'values': [1e-5, 5e-5, 1e-4, 5e-4, 1e-3],
+        'base_config': {
+            # 损失函数参数（固定）
+            'weight_loss_ms_disc': 0.3,
+            'weight_loss_pred': 1.0,
+            'weight_loss_src_sup': 0.1,
+            'weight_loss_trg_inj': 0.1,
+            'prototypical_margin': 1.0,
+            'scale_weights': [0.1, 0.3, 0.6],
+        },
+        'param_type': 'default_train_params',  # 标记为默认训练参数
+    },
+    'queue_size': {
+        'name': 'MoCo Queue Size',
+        'values': [24576, 49152, 98304, 196608],
+        'base_config': {
+            # 损失函数参数（固定）
+            'weight_loss_ms_disc': 0.3,
+            'weight_loss_pred': 1.0,
+            'weight_loss_src_sup': 0.1,
+            'weight_loss_trg_inj': 0.1,
+            'prototypical_margin': 1.0,
+            'scale_weights': [0.1, 0.3, 0.6],
+        },
+        'param_type': 'default_train_params',  # 标记为默认训练参数
     },
 }
 
@@ -266,14 +390,24 @@ DEFAULT_TRAIN_PARAMS = {
 # 路径常量
 RESULTS_DIR = "results"
 SUMMARY_DIR = "experiment_results"
-SENSITIVITY_DIR = os.path.join(SUMMARY_DIR, "参数敏感性分析实验")
+SENSITIVITY_DIR = os.path.join(SUMMARY_DIR, "sensitivity")
 
 
 def format_param_value(param_value: Any) -> str:
     """格式化参数值为字符串（用于文件夹名）"""
     if isinstance(param_value, list):
         return '_'.join([str(v) for v in param_value])
-    return str(param_value).replace('.', '_')
+    # 对于字符串类型的参数值（如 "128-256-512"），保留连字符，只替换点号
+    param_str = str(param_value)
+    # 替换点号为下划线（用于浮点数），但保留连字符
+    return param_str.replace('.', '_')
+
+
+def format_param_value_readable(param_value: Any) -> str:
+    """格式化参数值为可读字符串（用于CSV显示）"""
+    if isinstance(param_value, list):
+        return ','.join([str(v) for v in param_value])
+    return str(param_value)
 
 
 def get_summary_csv_path(dataset: str, src: str) -> str:
@@ -311,24 +445,54 @@ def build_train_command(
 ) -> tuple:
     """构建训练命令"""
     exp_value_str = format_param_value(param_value)
-    exp_folder = f"{dataset}_Sensitivity_{param_name}_{exp_value_str}"
+    # 使用sensitivity/前缀，统一管理参数敏感性分析实验的详细结果
+    exp_folder = f"sensitivity/{dataset}_Sensitivity_{param_name}_{exp_value_str}"
+    
+    # 获取参数类型（如果配置中指定了）
+    param_config = SENSITIVITY_CONFIGS.get(param_name, {})
+    param_type = param_config.get('param_type', 'base_config')  # 默认为base_config类型
+    
+    # 根据参数类型决定使用哪个值
+    # 数据集配置参数：batch_size, dropout, num_channels_TCN, hidden_dim_MLP
+    if param_type == 'dataset_config':
+        batch_size = param_value if param_name == 'batch_size' else dataset_config["batch_size"]
+        dropout = param_value if param_name == 'dropout' else dataset_config["dropout"]
+        num_channels_TCN = param_value if param_name == 'num_channels_TCN' else dataset_config["num_channels_TCN"]
+        hidden_dim_MLP = param_value if param_name == 'hidden_dim_MLP' else dataset_config["hidden_dim_MLP"]
+    else:
+        batch_size = dataset_config["batch_size"]
+        dropout = dataset_config["dropout"]
+        num_channels_TCN = dataset_config["num_channels_TCN"]
+        hidden_dim_MLP = dataset_config["hidden_dim_MLP"]
+    
+    # 默认训练参数：learning_rate, queue_size, kernel_size_TCN, dilation_factor_TCN
+    if param_type == 'default_train_params':
+        learning_rate = param_value if param_name == 'learning_rate' else DEFAULT_TRAIN_PARAMS["learning_rate"]
+        queue_size = param_value if param_name == 'queue_size' else DEFAULT_TRAIN_PARAMS["queue_size"]
+        kernel_size_TCN = param_value if param_name == 'kernel_size_TCN' else DEFAULT_TRAIN_PARAMS["kernel_size_TCN"]
+        dilation_factor_TCN = param_value if param_name == 'dilation_factor_TCN' else DEFAULT_TRAIN_PARAMS["dilation_factor_TCN"]
+    else:
+        learning_rate = DEFAULT_TRAIN_PARAMS["learning_rate"]
+        queue_size = DEFAULT_TRAIN_PARAMS["queue_size"]
+        kernel_size_TCN = DEFAULT_TRAIN_PARAMS["kernel_size_TCN"]
+        dilation_factor_TCN = DEFAULT_TRAIN_PARAMS["dilation_factor_TCN"]
     
     # 获取eval_batch_size，如果未设置则使用batch_size
-    eval_batch_size = dataset_config.get("eval_batch_size", dataset_config["batch_size"])
+    eval_batch_size = dataset_config.get("eval_batch_size", batch_size)
     
     cmd = [
         "python", "main_new/train.py",
         "--algo_name", "MSPAD",
         "--num_epochs", str(num_epochs),
-        "--batch_size", str(dataset_config["batch_size"]),
+        "--batch_size", str(batch_size),
         "--eval_batch_size", str(eval_batch_size),
-        "--learning_rate", DEFAULT_TRAIN_PARAMS["learning_rate"],
-        "--dropout", str(dataset_config["dropout"]),
-        "--num_channels_TCN", dataset_config["num_channels_TCN"],
-        "--dilation_factor_TCN", DEFAULT_TRAIN_PARAMS["dilation_factor_TCN"],
-        "--kernel_size_TCN", DEFAULT_TRAIN_PARAMS["kernel_size_TCN"],
-        "--hidden_dim_MLP", str(dataset_config["hidden_dim_MLP"]),
-        "--queue_size", DEFAULT_TRAIN_PARAMS["queue_size"],
+        "--learning_rate", str(learning_rate),
+        "--dropout", str(dropout),
+        "--num_channels_TCN", str(num_channels_TCN),
+        "--dilation_factor_TCN", str(dilation_factor_TCN),
+        "--kernel_size_TCN", str(kernel_size_TCN),
+        "--hidden_dim_MLP", str(hidden_dim_MLP),
+        "--queue_size", str(queue_size),
         "--momentum", DEFAULT_TRAIN_PARAMS["momentum"],
         "--id_src", src,
         "--id_trg", trg,
@@ -339,7 +503,8 @@ def build_train_command(
         "--seed", str(seed),
     ]
     
-    # 添加配置参数（跳过scale_weights和当前分析的参数）
+    # 添加损失函数配置参数（跳过scale_weights和当前分析的参数）
+    # 注意：MSPAD不使用weight_loss_disc，已由weight_loss_ms_disc替代
     config = base_config.copy()
     for key, val in config.items():
         if key == 'scale_weights':
@@ -347,11 +512,14 @@ def build_train_command(
                 print_colored("⚠ Warning: scale_weights parameter is not yet supported via command line", Colors.YELLOW)
                 print_colored("   Model will use default scale_weights: [0.1, 0.3, 0.6]", Colors.YELLOW)
             continue
-        if key != param_name:
+        # 只添加损失函数相关的参数（不是数据集配置或默认训练参数）
+        if key != param_name and key not in ['batch_size', 'dropout', 'num_channels_TCN', 'hidden_dim_MLP', 
+                                               'learning_rate', 'queue_size', 'kernel_size_TCN', 'dilation_factor_TCN']:
             cmd.extend([f"--{key}", str(val)])
     
-    # 添加当前分析的参数值
-    if param_name != 'scale_weights':
+    # 添加当前分析的参数值（仅限损失函数参数）
+    if param_name not in ['scale_weights', 'batch_size', 'dropout', 'num_channels_TCN', 'hidden_dim_MLP',
+                          'learning_rate', 'queue_size', 'kernel_size_TCN', 'dilation_factor_TCN']:
         cmd.extend([f"--{param_name}", str(param_value)])
     
     return cmd, exp_folder
@@ -445,21 +613,26 @@ def save_sensitivity_result(
         auprc = metrics.get('AUPRC')
         best_f1 = metrics.get('Best_F1')
 
-        # 准备结果数据
+        # 解析实际的源-目标对
+        if '-' in actual_src_trg:
+            actual_src, actual_trg = actual_src_trg.split('-', 1)
+        else:
+            actual_src, actual_trg = src, trg
+
+        # 准备结果数据（每个src-trg对作为一行）
         result_data = {
-            'dataset': dataset,
-            'src_trg': actual_src_trg,  # 使用实际的源-目标对
-            'param_name': param_name,
-            'param_value': format_param_value(param_value),
+            'src_id': actual_src,
+            'trg_id': actual_trg,
+            'param_value': format_param_value_readable(param_value),
             'exp_folder': exp_folder,
             'AUROC': auroc if auroc is not None else float('nan'),
             'AUPRC': auprc if auprc is not None else float('nan'),
             'Best_F1': best_f1 if best_f1 is not None else float('nan'),
         }
 
-        # 保存到参数敏感性分析实验文件夹
+        # 保存到参数敏感性分析实验文件夹（统一命名：Sensitivity_{param_name}_{dataset}_{src}.csv）
         os.makedirs(SENSITIVITY_DIR, exist_ok=True)
-        sensitivity_csv = os.path.join(SENSITIVITY_DIR, f'Sensitivity_{dataset}_{src}_{trg}.csv')
+        sensitivity_csv = os.path.join(SENSITIVITY_DIR, f'Sensitivity_{param_name}_{dataset}_{src}.csv')
 
         # 追加或创建文件
         mode = 'a' if os.path.exists(sensitivity_csv) else 'w'

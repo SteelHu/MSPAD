@@ -341,7 +341,7 @@ def get_algorithm_config(algo_name: str) -> dict:
             "exp_folder_suffix": "MSPAD_Full",
             "result_file_prefix": "MSPAD_",
             "extra_params": [
-                "--weight_loss_disc", "0.0",
+                # 注意：MSPAD不使用weight_loss_disc（单尺度域对抗损失），已由weight_loss_ms_disc替代
                 "--weight_loss_ms_disc", "0.5",
                 "--prototypical_margin", "1.0",
                 "--weight_loss_pred", "1.0",
@@ -409,8 +409,8 @@ def is_experiment_completed(
         else:
             result_file = f"{algo_name}_{dataset}_{src}.csv"
         
-        # 结果文件保存在experiment_results/对比实验文件夹中
-        result_path = os.path.join("experiment_results", "对比实验", result_file)
+        # 结果文件保存在experiment_results/comparison文件夹中
+        result_path = os.path.join("experiment_results", "comparison", result_file)
         if os.path.exists(result_path):
             try:
                 df = pd.read_csv(result_path)
@@ -453,10 +453,16 @@ def save_comparison_result(
         auprc = metrics.get('AUPRC')
         best_f1 = metrics.get('Best_F1')
 
-        # 准备结果数据
+        # 解析实际的源-目标对
+        if '-' in actual_src_trg:
+            actual_src, actual_trg = actual_src_trg.split('-', 1)
+        else:
+            actual_src, actual_trg = src, trg
+
+        # 准备结果数据（每个src-trg对作为一行）
         result_data = {
-            'dataset': dataset,
-            'src_trg': actual_src_trg,  # 使用实际的源-目标对
+            'src_id': actual_src,
+            'trg_id': actual_trg,
             'algorithm': algo_name,
             'exp_folder': exp_folder,
             'AUROC': auroc if auroc is not None else float('nan'),
@@ -464,10 +470,10 @@ def save_comparison_result(
             'Best_F1': best_f1 if best_f1 is not None else float('nan'),
         }
 
-        # 保存到对比实验文件夹
-        comparison_dir = os.path.join("experiment_results", "对比实验")
+        # 保存到对比实验文件夹（统一命名：Comparison_{dataset}_{src}.csv）
+        comparison_dir = os.path.join("experiment_results", "comparison")
         os.makedirs(comparison_dir, exist_ok=True)
-        comparison_csv = os.path.join(comparison_dir, f'Comparison_{dataset}_{src}_{trg}.csv')
+        comparison_csv = os.path.join(comparison_dir, f'Comparison_{dataset}_{src}.csv')
 
         # 追加或创建文件
         mode = 'a' if os.path.exists(comparison_csv) else 'w'

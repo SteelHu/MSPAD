@@ -6,44 +6,30 @@ MSPAD消融实验脚本
 功能：自动运行所有消融实验，验证每个核心组件的贡献
 
 实验设计：
-1. 核心组件消融（core）：
-   - Abl-4.1: DACAD Baseline（单尺度域对抗 + Deep SVDD）
-   - Abl-4.2: MSPAD Full（多尺度域对抗 + 原型网络 + 加权损失）
-   - Abl-4.3: Single-Scale + Deep SVDD
-   - Abl-4.4: Multi-Scale + Deep SVDD（仅添加改进1）
-   - Abl-4.5: Single-Scale + Prototypical（仅添加改进2）
-   - Abl-4.6: Multi-Scale + Prototypical（改进1+2）
-   - Abl-4.11-4.13: 多尺度权重配置对比
+核心组件消融（core）- 完整模型 + 消去各个组件后的模型：
+   - Abl-Full: MSPAD Full（完整模型，所有组件）
+   - Abl-w/o-MS-DA: 移除多尺度域对抗损失
+   - Abl-w/o-Prototypical: 移除原型网络（使用Deep SVDD）
+   - Abl-w/o-SrcSupCL: 移除源域监督对比损失
+   - Abl-w/o-TrgInjCL: 移除目标域注入对比损失
 
-2. 多尺度域对抗深度分析（multi_scale）：
-   - Abl-5.1-5.3: 单层分析（Layer 1/2/3 Only）
-   - Abl-5.4-5.6: 两层组合（Layer 1+2, 2+3, 1+3）
-   - Abl-5.7: All Layers（完整配置）
-   - Abl-5.8-5.10: 单尺度 vs 多尺度组合
-
-3. 损失函数消融（loss）：
-   - Abl-6.1: MSPAD Full（所有损失）
-   - Abl-6.2-6.6: 移除各个损失函数
+注意：multi_scale 和 loss 组已移除，如需运行请取消代码中的注释
 
 使用方法：
-    # 运行所有消融实验
-    python experiments/ablation_experiments.py
-
-    # 运行特定组
-    python experiments/ablation_experiments.py --group core  # 核心组件消融
-    python experiments/ablation_experiments.py --group multi_scale  # 多尺度分析
-    python experiments/ablation_experiments.py --group loss  # 损失函数消融
+    # 运行核心组件消融实验（默认）
+    python experiments/ablation_experiments.py --dataset ALFA --src 001 --all-targets
+    python experiments/ablation_experiments.py --dataset FWUAV --src 1 --all-targets
 
     # 指定数据集和源-目标对
     python experiments/ablation_experiments.py --dataset MSL --src F-5 --trg C-1
     python experiments/ablation_experiments.py --dataset FWUAV --src 1 --trg 6
 
-    # 只指定源域，对所有其他文件作为目标域运行
+    # 只指定源域，对所有其他文件作为目标域运行（推荐）
     python experiments/ablation_experiments.py --dataset MSL --src F-5 --all-targets
     python experiments/ablation_experiments.py --dataset FWUAV --src 1 --all-targets
 
     # 跳过已完成的实验（断点续传）
-    python experiments/ablation_experiments.py --skip-completed
+    python experiments/ablation_experiments.py --dataset ALFA --src 001 --all-targets --skip-completed
 """
 
 import os
@@ -62,7 +48,7 @@ from sklearn.metrics import roc_curve, auc
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # 路径常量
 SUMMARY_DIR = "experiment_results"
-ABLATION_DIR = os.path.join(SUMMARY_DIR, "消融实验")
+ABLATION_DIR = os.path.join(SUMMARY_DIR, "ablation")
 
 # 颜色定义
 class Colors:
@@ -173,24 +159,14 @@ def extract_metrics_from_log(log_file):
 # 消融实验配置
 ABLATION_EXPERIMENTS = {
     # ========== 核心组件消融 ==========
+    # 实验设计：完整模型 + 消去各个组件后的模型
+    # 目标：验证每个核心组件的贡献
     'core': {
-        'Abl-4.1': {
-            'name': 'DACAD Baseline',
-            'description': '原始DACAD（单尺度域对抗 + Deep SVDD）',
-            'algo_name': 'dacad',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.0,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'use_prototypical': False,  # 使用Deep SVDD
-            'experiment_folder': 'Ablation_DACAD_Baseline',
-        },
-        'Abl-4.2': {
+        'Abl-Full': {
             'name': 'MSPAD Full',
-            'description': 'MSPAD完整版（多尺度域对抗 + 原型网络 + 加权损失）',
+            'description': 'MSPAD完整版（所有组件）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
+            # 注意：MSPAD不使用weight_loss_disc（单尺度域对抗损失），已由weight_loss_ms_disc替代
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -199,317 +175,57 @@ ABLATION_EXPERIMENTS = {
             'scale_weights': [0.1, 0.3, 0.6],
             'experiment_folder': 'Ablation_MSPAD_Full',
         },
-        'Abl-4.3': {
-            'name': 'Single-Scale + Deep SVDD',
-            'description': '单尺度域对抗 + Deep SVDD（Baseline）',
-            'algo_name': 'dacad',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.0,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'experiment_folder': 'Ablation_SingleScale_DeepSVDD',
-        },
-        'Abl-4.4': {
-            'name': 'Multi-Scale + Deep SVDD',
-            'description': '多尺度域对抗 + Deep SVDD（仅添加改进1）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            # 注意：MSPAD默认使用原型网络，此实验需要特殊模型变体
-            # 暂时使用MSPAD配置，但会在结果中标注
-            'scale_weights': [0.1, 0.3, 0.6],
-            'experiment_folder': 'Ablation_MultiScale_DeepSVDD',
-        },
-        'Abl-4.5': {
-            'name': 'Single-Scale + Prototypical',
-            'description': '单尺度域对抗 + 原型网络（仅添加改进2）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.0,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'experiment_folder': 'Ablation_SingleScale_Prototypical',
-        },
-        'Abl-4.6': {
-            'name': 'Multi-Scale + Prototypical',
-            'description': '多尺度域对抗 + 原型网络（改进1+2）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'scale_weights': [0.1, 0.3, 0.6],
-            'experiment_folder': 'Ablation_MultiScale_Prototypical',
-        },
-        'Abl-4.11': {
-            'name': 'Multi-Scale Uniform Weights',
-            'description': '多尺度域对抗（均匀权重）+ 原型网络',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'scale_weights': [0.33, 0.33, 0.34],  # 均匀权重
-            'experiment_folder': 'Ablation_MultiScale_UniformWeights',
-        },
-        'Abl-4.12': {
-            'name': 'Multi-Scale Weighted',
-            'description': '多尺度域对抗（加权[0.1,0.3,0.6]）+ 原型网络',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'scale_weights': [0.1, 0.3, 0.6],  # 默认权重
-            'experiment_folder': 'Ablation_MultiScale_Weighted',
-        },
-        'Abl-4.13': {
-            'name': 'Multi-Scale Reverse Weights',
-            'description': '多尺度域对抗（反向权重[0.6,0.3,0.1]）+ 原型网络',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'scale_weights': [0.6, 0.3, 0.1],  # 反向权重
-            'experiment_folder': 'Ablation_MultiScale_ReverseWeights',
-        },
-    },
-    
-    # ========== 多尺度域对抗深度分析 ==========
-    'multi_scale': {
-        'Abl-5.1': {
-            'name': 'Layer 1 Only',
-            'description': '仅低层域对抗（Layer 1）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'use_layer_mask': [1, 0, 0],  # 仅第1层
-            'scale_weights': [1.0, 0.0, 0.0],
-            'experiment_folder': 'Ablation_Layer1Only',
-        },
-        'Abl-5.2': {
-            'name': 'Layer 2 Only',
-            'description': '仅中层域对抗（Layer 2）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'use_layer_mask': [0, 1, 0],  # 仅第2层
-            'scale_weights': [0.0, 1.0, 0.0],
-            'experiment_folder': 'Ablation_Layer2Only',
-        },
-        'Abl-5.3': {
-            'name': 'Layer 3 Only',
-            'description': '仅高层域对抗（Layer 3）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'use_layer_mask': [0, 0, 1],  # 仅第3层
-            'scale_weights': [0.0, 0.0, 1.0],
-            'experiment_folder': 'Ablation_Layer3Only',
-        },
-        'Abl-5.4': {
-            'name': 'Layer 1+2',
-            'description': '低层+中层域对抗',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'use_layer_mask': [1, 1, 0],
-            'scale_weights': [0.5, 0.5, 0.0],
-            'experiment_folder': 'Ablation_Layer12',
-        },
-        'Abl-5.5': {
-            'name': 'Layer 2+3',
-            'description': '中层+高层域对抗',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'use_layer_mask': [0, 1, 1],
-            'scale_weights': [0.0, 0.5, 0.5],
-            'experiment_folder': 'Ablation_Layer23',
-        },
-        'Abl-5.6': {
-            'name': 'Layer 1+3',
-            'description': '低层+高层域对抗',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'use_layer_mask': [1, 0, 1],
-            'scale_weights': [0.5, 0.0, 0.5],
-            'experiment_folder': 'Ablation_Layer13',
-        },
-        'Abl-5.7': {
-            'name': 'All Layers',
-            'description': '所有层域对抗（完整配置）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'use_layer_mask': [1, 1, 1],
-            'scale_weights': [0.1, 0.3, 0.6],
-            'experiment_folder': 'Ablation_AllLayers',
-        },
-        'Abl-5.8': {
-            'name': 'Single-Scale Only',
-            'description': '仅单尺度（最终层）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.0,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'experiment_folder': 'Ablation_SingleScaleOnly',
-        },
-        'Abl-5.9': {
-            'name': 'Multi-Scale Only',
-            'description': '仅多尺度（所有层）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'scale_weights': [0.1, 0.3, 0.6],
-            'experiment_folder': 'Ablation_MultiScaleOnly',
-        },
-        'Abl-5.10': {
-            'name': 'Single + Multi-Scale',
-            'description': '单尺度 + 多尺度（完整配置）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'scale_weights': [0.1, 0.3, 0.6],
-            'experiment_folder': 'Ablation_SingleMultiScale',
-        },
-    },
-    
-    # ========== 损失函数消融 ==========
-    'loss': {
-        'Abl-6.1': {
-            'name': 'MSPAD Full',
-            'description': 'MSPAD完整版（所有损失）',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'scale_weights': [0.1, 0.3, 0.6],
-            'experiment_folder': 'Ablation_AllLosses',
-        },
-        'Abl-6.2': {
-            'name': 'w/o Single-Scale DA',
-            'description': '移除单尺度域对抗损失',
-            'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,
-            'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'scale_weights': [0.1, 0.3, 0.6],
-            'experiment_folder': 'Ablation_NoSingleScaleDA',
-        },
-        'Abl-6.3': {
+        'Abl-w/o-MS-DA': {
             'name': 'w/o Multi-Scale DA',
             'description': '移除多尺度域对抗损失',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
-            'weight_loss_ms_disc': 0.0,
+            'weight_loss_ms_disc': 0.0,  # 移除多尺度域对抗损失
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
             'weight_loss_trg_inj': 0.1,
             'prototypical_margin': 1.0,
             'experiment_folder': 'Ablation_NoMultiScaleDA',
         },
-        'Abl-6.4': {
-            'name': 'w/o Prototypical Loss',
-            'description': '移除原型网络分类损失',
+        'Abl-w/o-Prototypical': {
+            'name': 'w/o Prototypical',
+            'description': '移除原型网络分类损失（将weight_loss_pred设为0）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
-            'weight_loss_pred': 0.0,
+            'weight_loss_pred': 0.0,  # 移除原型网络分类损失
             'weight_loss_src_sup': 0.1,
             'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
+            'prototypical_margin': 1.0,  # 虽然不使用，但保留参数避免错误
             'scale_weights': [0.1, 0.3, 0.6],
-            'experiment_folder': 'Ablation_NoPrototypicalLoss',
+            'experiment_folder': 'Ablation_NoPrototypical',
         },
-        'Abl-6.5': {
+        'Abl-w/o-SrcSupCL': {
             'name': 'w/o Source Sup CL',
             'description': '移除源域监督对比损失',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.0,
+            'weight_loss_src_sup': 0.0,  # 移除源域监督对比损失
             'weight_loss_trg_inj': 0.1,
             'prototypical_margin': 1.0,
             'scale_weights': [0.1, 0.3, 0.6],
             'experiment_folder': 'Ablation_NoSourceSupCL',
         },
-        'Abl-6.6': {
+        'Abl-w/o-TrgInjCL': {
             'name': 'w/o Target Inj CL',
             'description': '移除目标域注入对比损失',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.0,
+            'weight_loss_trg_inj': 0.0,  # 移除目标域注入对比损失
             'prototypical_margin': 1.0,
             'scale_weights': [0.1, 0.3, 0.6],
             'experiment_folder': 'Ablation_NoTargetInjCL',
         },
     },
+    
+    # ========== 以下实验组已移除，仅保留核心组件消融 ==========
+    # multi_scale 和 loss 组已完全移除，如需运行请从历史版本恢复
 }
 
 
@@ -680,6 +396,7 @@ def save_ablation_result(
     trg: str,
     exp_id: str,
     exp_folder: str,
+    group: str = "all",
 ) -> bool:
     """保存消融实验结果到CSV文件"""
     try:
@@ -703,10 +420,16 @@ def save_ablation_result(
         auprc = metrics.get('AUPRC')
         best_f1 = metrics.get('Best_F1')
 
-        # 准备结果数据
+        # 解析实际的源-目标对
+        if '-' in actual_src_trg:
+            actual_src, actual_trg = actual_src_trg.split('-', 1)
+        else:
+            actual_src, actual_trg = src, trg
+
+        # 准备结果数据（每个src-trg对作为一行）
         result_data = {
-            'dataset': dataset,
-            'src_trg': actual_src_trg,  # 使用实际的源-目标对
+            'src_id': actual_src,
+            'trg_id': actual_trg,
             'exp_id': exp_id,
             'exp_folder': exp_folder,
             'AUROC': auroc if auroc is not None else float('nan'),
@@ -714,9 +437,9 @@ def save_ablation_result(
             'Best_F1': best_f1 if best_f1 is not None else float('nan'),
         }
 
-        # 保存到消融实验文件夹
+        # 保存到消融实验文件夹（统一命名：Ablation_{group}_{dataset}_{src}.csv）
         os.makedirs(ABLATION_DIR, exist_ok=True)
-        ablation_csv = os.path.join(ABLATION_DIR, f'Ablation_{dataset}_{src}_{trg}.csv')
+        ablation_csv = os.path.join(ABLATION_DIR, f'Ablation_{group}_{dataset}_{src}.csv')
 
         # 追加或创建文件
         mode = 'a' if os.path.exists(ablation_csv) else 'w'
@@ -741,6 +464,7 @@ def run_ablation_experiment(
     num_epochs: int = 20,
     seed: int = 1234,
     skip_if_completed: bool = True,
+    group: str = "all",
 ) -> bool:
     """运行单个消融实验"""
     
@@ -754,7 +478,8 @@ def run_ablation_experiment(
         print_colored(f"Error: Unknown dataset: {dataset}", Colors.RED)
         return False
     
-    exp_folder = f"{dataset}_{config['experiment_folder']}"
+    # 使用ablation/前缀，统一管理消融实验的详细结果
+    exp_folder = f"ablation/{dataset}_{config['experiment_folder']}"
     result_dir = os.path.join("results", exp_folder, f"{src}-{trg}")
     
     # 检查是否已完成
@@ -795,7 +520,6 @@ def run_ablation_experiment(
         "--queue_size", "98304",
         "--momentum", "0.99",
         "--weight_decay", "1e-4",  # 添加缺失的参数
-        "--weight_loss_disc", str(config['weight_loss_disc']),
         "--weight_loss_pred", str(config['weight_loss_pred']),
         "--weight_loss_src_sup", str(config['weight_loss_src_sup']),
         "--weight_loss_trg_inj", str(config['weight_loss_trg_inj']),
@@ -808,8 +532,13 @@ def run_ablation_experiment(
         "--seed", str(seed),
     ]
     
-    # 添加MSPAD特有参数
-    if algo_name == 'MSPAD':
+    # 添加算法特定参数
+    if algo_name == 'dacad':
+        # DACAD使用单尺度域对抗损失
+        if 'weight_loss_disc' in config:
+            train_cmd.extend(["--weight_loss_disc", str(config['weight_loss_disc'])])
+    elif algo_name == 'MSPAD':
+        # MSPAD不使用weight_loss_disc（已由weight_loss_ms_disc替代），不添加该参数
         # 添加多尺度域对抗损失权重（MSPAD特有）
         if 'weight_loss_ms_disc' in config:
             train_cmd.extend(["--weight_loss_ms_disc", str(config['weight_loss_ms_disc'])])
@@ -863,7 +592,7 @@ def run_ablation_experiment(
         return False
     
     # 保存结果
-    save_ablation_result(dataset, src, trg, exp_id, exp_folder)
+    save_ablation_result(dataset, src, trg, exp_id, exp_folder, group)
 
     print_colored(f"✓ Experiment {exp_id} completed successfully", Colors.GREEN)
     return True
@@ -884,7 +613,7 @@ def main():
     parser.add_argument("--all-targets", action="store_true",
                        help="Use all other files as targets (only set source)")
     parser.add_argument("--group", type=str, choices=["core", "multi_scale", "loss", "all"],
-                       default="all", help="Experiment group to run (default: all)")
+                       default="core", help="Experiment group to run (default: core)")
     parser.add_argument("--num_epochs", type=int, default=20,
                        help="Number of epochs (default: 20)")
     parser.add_argument("--seed", type=int, default=2021,
@@ -965,6 +694,7 @@ def main():
                             num_epochs=args.num_epochs,
                             seed=args.seed,
                             skip_if_completed=args.skip_completed,
+                            group=args.group,
                         )
                         key = f"{exp_id}_{trg}"
                         all_results[key] = {
@@ -1061,6 +791,7 @@ def main():
                 num_epochs=args.num_epochs,
                 seed=args.seed,
                 skip_if_completed=args.skip_completed,
+                group=args.group,
             )
             results[exp_id] = {
                 'status': 'Success' if success else 'Failed',
