@@ -279,15 +279,15 @@ class MSPAD(Base_Algorithm):
         
         # ========== 第五步：加权组合所有损失 ==========
         # 权重说明：
-        # - weight_loss_disc: 单尺度域对抗损失权重（默认0.5）
-        # - weight_loss_ms_disc: 多尺度域对抗损失权重（默认0.3，新增）
+        # - weight_loss_disc: 单尺度域对抗损失权重（已取消，因为多尺度损失已包含单尺度）
+        # - weight_loss_ms_disc: 多尺度域对抗损失权重（默认0.3，包含单尺度损失）
         # - weight_loss_pred: 原型网络分类损失权重（默认1.0，替换Deep SVDD）
         # - weight_loss_src_sup: 源域监督对比损失权重（默认0.1）
         # - weight_loss_trg_inj: 目标域注入对比损失权重（默认0.1）
         weight_ms_disc = getattr(self.args, 'weight_loss_ms_disc', 0.3)
-        
-        loss = (self.args.weight_loss_disc * loss_disc +
-                weight_ms_disc * ms_disc_loss +
+
+        # 取消单尺度域对抗损失，因为多尺度域对抗损失已包含单尺度部分
+        loss = (weight_ms_disc * ms_disc_loss +
                 self.args.weight_loss_pred * src_cls_loss +
                 self.args.weight_loss_src_sup * src_sup_cont_loss +
                 self.args.weight_loss_trg_inj * trg_inj_cont_loss +

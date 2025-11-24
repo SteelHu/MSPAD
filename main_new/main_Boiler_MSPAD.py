@@ -48,7 +48,7 @@ if __name__ == '__main__':
                     '--dilation_factor_TCN', '3',        # TCN膨胀因子：3
                     '--kernel_size_TCN', '7',            # TCN卷积核大小：7
                     '--hidden_dim_MLP', '256',           # MLP隐藏层维度：256（Boiler数据集使用）
-                    '--weight_loss_disc', '0.5',         # 单尺度域对抗损失权重
+                    '--weight_loss_disc', '0.0',         # 单尺度域对抗损失权重（已弃用）
                     '--weight_loss_ms_disc', '0.3',      # 多尺度域对抗损失权重（新增）
                     '--weight_loss_pred', '1.0',         # 原型网络分类损失权重（替换Deep SVDD）
                     '--weight_loss_src_sup', '0.1',      # 源域监督对比损失权重

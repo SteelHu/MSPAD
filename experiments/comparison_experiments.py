@@ -25,9 +25,11 @@ import subprocess
 import argparse
 import pandas as pd
 import numpy as np
+import re
 from typing import List, Tuple, Optional
 from datetime import datetime
 import json
+from sklearn.metrics import roc_curve, auc
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -46,6 +48,96 @@ class Colors:
 def print_colored(message: str, color: str = Colors.NC):
     """打印彩色消息"""
     print(f"{color}{message}{Colors.NC}")
+
+
+def find_experiment_results_dir(exp_folder: str, preferred_src_trg: str = None) -> str:
+    """查找实验结果目录
+
+    Args:
+        exp_folder: 实验文件夹名
+        preferred_src_trg: 首选的源-目标对（如"002-026"）
+
+    Returns:
+        实际包含结果的目录名，如果没找到返回None
+    """
+    exp_path = os.path.join("results", exp_folder)
+    if not os.path.exists(exp_path):
+        return None
+
+    # 如果首选目录存在，直接返回
+    if preferred_src_trg and os.path.exists(os.path.join(exp_path, preferred_src_trg)):
+        return preferred_src_trg
+
+    # 扫描所有子目录，找到包含eval_train.log的目录
+    for item in os.listdir(exp_path):
+        item_path = os.path.join(exp_path, item)
+        if os.path.isdir(item_path):
+            log_file = os.path.join(item_path, "eval_train.log")
+            pred_file = os.path.join(item_path, "predictions_test_target.csv")
+            if os.path.exists(log_file) and os.path.exists(pred_file):
+                return item
+
+    return None
+
+
+def calculate_auroc_from_predictions(pred_file):
+    """从预测文件中计算AUROC"""
+    try:
+        if not os.path.exists(pred_file):
+            print_colored(f"Warning: Prediction file not found: {pred_file}", Colors.YELLOW)
+            return None
+
+        df = pd.read_csv(pred_file)
+
+        if 'y' not in df.columns or 'y_pred' not in df.columns:
+            print_colored(f"Warning: Required columns not found in {pred_file}", Colors.YELLOW)
+            return None
+
+        y_true = df['y'].values
+        y_scores = df['y_pred'].values
+
+        # 计算ROC曲线和AUC
+        fpr, tpr, _ = roc_curve(y_true, y_scores)
+        roc_auc = auc(fpr, tpr)
+
+        return roc_auc
+
+    except Exception as e:
+        print_colored(f"Error calculating AUROC for {pred_file}: {e}", Colors.YELLOW)
+        return None
+
+
+def extract_metrics_from_log(log_file):
+    """从日志文件中提取评估指标"""
+    metrics = {}
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+            # 提取AUPRC
+            auprc_match = re.search(r'AUPRC score is\s*:\s*([\d.]+)', content)
+            if auprc_match:
+                metrics['AUPRC'] = float(auprc_match.group(1))
+
+            # 提取Best F1 Score
+            f1_match = re.search(r'Best F1 score is\s*:\s*([\d.]+)', content)
+            if f1_match:
+                metrics['Best_F1'] = float(f1_match.group(1))
+
+            # 提取Precision
+            prec_match = re.search(r'Best Prec score is\s*:\s*([\d.]+)', content)
+            if prec_match:
+                metrics['Precision'] = float(prec_match.group(1))
+
+            # 提取Recall
+            rec_match = re.search(r'Best Rec score is\s*:\s*([\d.]+)', content)
+            if rec_match:
+                metrics['Recall'] = float(rec_match.group(1))
+
+    except Exception as e:
+        print_colored(f"Error reading {log_file}: {e}", Colors.YELLOW)
+
+    return metrics
 
 
 def get_msl_files() -> List[str]:
@@ -119,6 +211,41 @@ def get_fwuav_files() -> List[str]:
     return sorted(files)
 
 
+def get_alfa_files() -> List[str]:
+    """获取ALFA数据集的所有文件列表"""
+    alfa_dir = 'datasets/ALFA'
+    if not os.path.exists(alfa_dir):
+        print_colored(f"Error: ALFA dataset directory not found: {alfa_dir}", Colors.RED)
+        return []
+
+    files = []
+    for item in os.listdir(alfa_dir):
+        item_path = os.path.join(alfa_dir, item)
+        # ALFA数据集的目录结构是直接的数字编号（如002、003等）
+        if os.path.isdir(item_path) and item.isdigit():
+            files.append(item)
+
+    return sorted(files)
+
+
+def get_uav_files() -> List[str]:
+    """获取UAV数据集的所有文件列表"""
+    uav_dir = 'datasets/UAV'
+    if not os.path.exists(uav_dir):
+        print_colored(f"Error: UAV dataset directory not found: {uav_dir}", Colors.RED)
+        return []
+
+    files = []
+    for item in os.listdir(uav_dir):
+        item_path = os.path.join(uav_dir, item)
+        if os.path.isdir(item_path) and item.startswith('flight_'):
+            # 提取flight编号，如 'flight_002' -> '002'
+            flight_id = item.replace('flight_', '')
+            files.append(flight_id)
+
+    return sorted(files)
+
+
 def get_dataset_files(dataset: str) -> List[str]:
     """根据数据集名称获取文件列表"""
     if dataset == "MSL":
@@ -129,6 +256,10 @@ def get_dataset_files(dataset: str) -> List[str]:
         return get_boiler_files()
     elif dataset == "FWUAV":
         return get_fwuav_files()
+    elif dataset == "ALFA":
+        return get_alfa_files()
+    elif dataset == "UAV":
+        return get_uav_files()
     else:
         print_colored(f"Unknown dataset: {dataset}", Colors.RED)
         return []
@@ -169,6 +300,22 @@ def get_dataset_config(dataset: str) -> dict:
             "num_channels_TCN": "64-128-256",
             "hidden_dim_MLP": 512,
         },
+        "ALFA": {
+            "path_src": "datasets/ALFA",
+            "path_trg": "datasets/ALFA",
+            "batch_size": 128,
+            "dropout": 0.1,
+            "num_channels_TCN": "64-128-256",
+            "hidden_dim_MLP": 512,
+        },
+        "UAV": {
+            "path_src": "datasets/UAV",
+            "path_trg": "datasets/UAV",
+            "batch_size": 128,
+            "dropout": 0.1,
+            "num_channels_TCN": "64-128-256",
+            "hidden_dim_MLP": 512,
+        },
     }
     return configs.get(dataset, {})
 
@@ -194,8 +341,8 @@ def get_algorithm_config(algo_name: str) -> dict:
             "exp_folder_suffix": "MSPAD_Full",
             "result_file_prefix": "MSPAD_",
             "extra_params": [
-                "--weight_loss_disc", "0.5",
-                "--weight_loss_ms_disc", "0.3",
+                "--weight_loss_disc", "0.0",
+                "--weight_loss_ms_disc", "0.5",
                 "--prototypical_margin", "1.0",
                 "--weight_loss_pred", "1.0",
                 "--weight_loss_src_sup", "0.1",
@@ -275,6 +422,65 @@ def is_experiment_completed(
                 pass
     
     return False
+
+
+def save_comparison_result(
+    dataset: str,
+    algo_name: str,
+    src: str,
+    trg: str,
+    exp_folder: str,
+) -> bool:
+    """保存对比实验结果到CSV文件"""
+    try:
+        # 查找实际的实验结果目录
+        actual_src_trg = find_experiment_results_dir(exp_folder, f"{src}-{trg}")
+        if not actual_src_trg:
+            print_colored(f"⚠ Warning: No experiment results found in {exp_folder}", Colors.YELLOW)
+            return False
+
+        # 构建预测文件路径
+        pred_file = os.path.join("results", exp_folder, actual_src_trg, "predictions_test_target.csv")
+        log_file = os.path.join("results", exp_folder, actual_src_trg, "eval_train.log")
+
+        print_colored(f"Using results from: {actual_src_trg}", Colors.BLUE)
+
+        # 计算AUROC
+        auroc = calculate_auroc_from_predictions(pred_file)
+
+        # 提取其他指标
+        metrics = extract_metrics_from_log(log_file)
+        auprc = metrics.get('AUPRC')
+        best_f1 = metrics.get('Best_F1')
+
+        # 准备结果数据
+        result_data = {
+            'dataset': dataset,
+            'src_trg': actual_src_trg,  # 使用实际的源-目标对
+            'algorithm': algo_name,
+            'exp_folder': exp_folder,
+            'AUROC': auroc if auroc is not None else float('nan'),
+            'AUPRC': auprc if auprc is not None else float('nan'),
+            'Best_F1': best_f1 if best_f1 is not None else float('nan'),
+        }
+
+        # 保存到对比实验文件夹
+        comparison_dir = os.path.join("experiment_results", "对比实验")
+        os.makedirs(comparison_dir, exist_ok=True)
+        comparison_csv = os.path.join(comparison_dir, f'Comparison_{dataset}_{src}_{trg}.csv')
+
+        # 追加或创建文件
+        mode = 'a' if os.path.exists(comparison_csv) else 'w'
+        header = mode == 'w'
+
+        df = pd.DataFrame([result_data])
+        df.to_csv(comparison_csv, mode=mode, header=header, index=False)
+
+        print_colored(f"✓ 结果已保存到: {comparison_csv}", Colors.GREEN)
+        return True
+    except Exception as e:
+        print_colored(f"⚠ Warning: Failed to save comparison results: {e}", Colors.YELLOW)
+        return False
 
 
 def run_experiment(
@@ -368,9 +574,6 @@ def run_experiment(
         "--id_trg", trg,
     ]
 
-    # For CLUDA, keep the model after evaluation (don't delete it)
-    if algo_name == "cluda":
-        eval_cmd.append("--keep_model")
     # 所有算法默认都会删除模型文件以节省空间
     
     # 运行评估
@@ -393,6 +596,18 @@ def run_experiment(
             return False
         return False
     
+    # 删除模型文件以节省空间
+    try:
+        model_file = os.path.join("results", exp_folder, f"{src}-{trg}", "model_best.pth.tar")
+        if os.path.exists(model_file):
+            os.remove(model_file)
+            print_colored(f"🗑️  Model file deleted: {model_file}", Colors.BLUE)
+    except Exception as e:
+        print_colored(f"⚠ Warning: Failed to delete model file: {e}", Colors.YELLOW)
+
+    # 保存结果
+    save_comparison_result(dataset, algo_name, src, trg, exp_folder)
+
     print_colored(f"✓ Completed: {algo_name} on {dataset} ({src} -> {trg})", Colors.GREEN)
     return True
 
@@ -470,18 +685,27 @@ Examples:
   # 指定源域，所有其他文件为目标域
   python experiments/comparison_experiments.py --dataset MSL --src F-5 --all-targets
   python experiments/comparison_experiments.py --dataset FWUAV --src 1 --all-targets
+  python experiments/comparison_experiments.py --dataset UAV --src 002 --all-targets
+
+  # 多个数据集，指定源域，所有其他文件为目标域
+  python experiments/comparison_experiments.py --datasets ALFA FWUAV --src 001 --all-targets
+  python experiments/comparison_experiments.py --datasets FWUAV ALFA --src 1 --all-targets
+  python experiments/comparison_experiments.py --datasets UAV ALFA --src 002 --all-targets
 
   # 断点续传：跳过已完成的实验
   python experiments/comparison_experiments.py --dataset SMD --src 1-1 --all-targets --skip-completed
-  python experiments/comparison_experiments.py --dataset FWUAV --src 1 --all-targets --skip-completed
+  python experiments/comparison_experiments.py --datasets ALFA FWUAV --src 001 --all-targets --skip-completed
 
   # 运行所有数据集的所有组合
   python experiments/comparison_experiments.py --all-datasets --all-combinations
         """
     )
     
-    parser.add_argument("--dataset", type=str, choices=["MSL", "SMD", "Boiler", "FWUAV"],
-                       help="Dataset name: MSL, SMD, Boiler, or FWUAV")
+    parser.add_argument("--dataset", type=str, choices=["MSL", "SMD", "Boiler", "FWUAV", "ALFA", "UAV"],
+                       help="Dataset name: MSL, SMD, Boiler, FWUAV, ALFA, or UAV")
+    parser.add_argument("--datasets", type=str, nargs='+',
+                       choices=["MSL", "SMD", "Boiler", "FWUAV", "ALFA", "UAV"],
+                       help="Multiple dataset names (space-separated)")
     parser.add_argument("--src", type=str, help="Source domain ID")
     parser.add_argument("--trg", type=str, help="Target domain ID")
     parser.add_argument("--all-targets", action="store_true",
@@ -506,6 +730,10 @@ Examples:
     # 设置数据集特定的默认参数
     if args.dataset == "FWUAV" and not args.src:
         args.src = "1"  # FWUAV默认使用场景1作为源域
+    if args.dataset == "ALFA" and not args.src:
+        args.src = "001"  # ALFA默认使用flight 001作为源域
+    if args.dataset == "UAV" and not args.src:
+        args.src = "002"  # UAV默认使用flight 002作为源域
 
     # 打印启动信息
     print_colored("="*60, Colors.CYAN)
@@ -571,11 +799,17 @@ Examples:
         print_colored(f"\nResults saved to: {summary_file}", Colors.GREEN)
         return
     
-    # 检查数据集是否设置
-    if not args.dataset:
-        print_colored("Error: Dataset not specified. Use --dataset MSL|SMD|Boiler", Colors.RED)
+    # 确定要运行的数据集列表
+    if args.datasets:
+        datasets_to_run = args.datasets
+    elif args.dataset:
+        datasets_to_run = [args.dataset]
+    elif args.all_datasets:
+        datasets_to_run = ["MSL", "SMD", "Boiler", "FWUAV", "ALFA", "UAV"]
+    else:
+        print_colored("Error: Dataset not specified. Use --dataset, --datasets, or --all-datasets", Colors.RED)
         return
-    
+
     # 检查源域是否设置
     if not args.src:
         print_colored("Error: Source domain not specified. Use --src SOURCE_DOMAIN", Colors.RED)
@@ -584,30 +818,41 @@ Examples:
     # 如果设置了所有目标域
     if args.all_targets:
         print_colored(f"Running with source={args.src}, all other files as targets...", Colors.YELLOW)
-        
-        files = get_dataset_files(args.dataset)
-        if not files:
-            print_colored(f"Error: No files found for {args.dataset}", Colors.RED)
-            return
-        
-        if args.src not in files:
-            print_colored(f"Error: Source domain '{args.src}' not found in {args.dataset}", Colors.RED)
-            return
-        
-        for trg in files:
-            if trg != args.src:
-                results = run_comparison(
-                    dataset=args.dataset,
-                    src=args.src,
-                    trg=trg,
-                    num_epochs=args.num_epochs,
-                    batch_size=args.batch_size,
-                    learning_rate=args.learning_rate,
-                    seed=args.seed,
-                    skip_if_completed=args.skip_completed,
-                )
-                all_results[f"{args.src}_{trg}"] = results
-        
+
+        # 为每个数据集执行
+        for dataset in datasets_to_run:
+            print_colored(f"\n{'='*60}", Colors.BLUE)
+            print_colored(f"=== {dataset} Dataset ===", Colors.BLUE)
+            print_colored(f"{'='*60}", Colors.BLUE)
+
+            # 获取数据集的文件列表
+            files = get_dataset_files(dataset)
+            if not files:
+                print_colored(f"⚠ No files found for {dataset}, skipping...", Colors.YELLOW)
+                continue
+
+            # 检查源域是否存在
+            if args.src not in files:
+                print_colored(f"⚠ Source domain '{args.src}' not found in {dataset}, skipping...", Colors.YELLOW)
+                continue
+
+            print_colored(f"Found {len(files)} files, using {args.src} as source", Colors.CYAN)
+
+            # 为每个目标域运行实验
+            for trg in files:
+                if trg != args.src:
+                    results = run_comparison(
+                        dataset=dataset,
+                        src=args.src,
+                        trg=trg,
+                        num_epochs=args.num_epochs,
+                        batch_size=args.batch_size,
+                        learning_rate=args.learning_rate,
+                        seed=args.seed,
+                        skip_if_completed=args.skip_completed,
+                    )
+                    all_results[f"{dataset}_{args.src}_{trg}"] = results
+
         print_colored("\n" + "="*60, Colors.GREEN)
         print_colored("All experiments completed!", Colors.GREEN)
         print_colored("="*60, Colors.GREEN)
@@ -615,16 +860,34 @@ Examples:
     
     # 如果设置了目标域
     if args.trg:
-        run_comparison(
-            dataset=args.dataset,
-            src=args.src,
-            trg=args.trg,
-            num_epochs=args.num_epochs,
-            batch_size=args.batch_size,
-            learning_rate=args.learning_rate,
-            seed=args.seed,
-            skip_if_completed=args.skip_completed,
-        )
+        if len(datasets_to_run) > 1:
+            print_colored("Running single target experiment on multiple datasets...", Colors.YELLOW)
+            for dataset in datasets_to_run:
+                print_colored(f"\n{'='*60}", Colors.BLUE)
+                print_colored(f"=== {dataset} Dataset ===", Colors.BLUE)
+                print_colored(f"{'='*60}", Colors.BLUE)
+
+                run_comparison(
+                    dataset=dataset,
+                    src=args.src,
+                    trg=args.trg,
+                    num_epochs=args.num_epochs,
+                    batch_size=args.batch_size,
+                    learning_rate=args.learning_rate,
+                    seed=args.seed,
+                    skip_if_completed=args.skip_completed,
+                )
+        else:
+            run_comparison(
+                dataset=datasets_to_run[0],
+                src=args.src,
+                trg=args.trg,
+                num_epochs=args.num_epochs,
+                batch_size=args.batch_size,
+                learning_rate=args.learning_rate,
+                seed=args.seed,
+                skip_if_completed=args.skip_completed,
+            )
         return
     
     # 如果没有设置目标域，也没有设置--all-targets

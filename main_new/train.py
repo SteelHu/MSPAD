@@ -241,7 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight_loss_src', type=float, default=0.0)
     parser.add_argument('--weight_loss_trg', type=float, default=0.0)
     parser.add_argument('--weight_loss_ts', type=float, default=0.0)
-    parser.add_argument('--weight_loss_disc', type=float, default=0.5)
+    parser.add_argument('--weight_loss_disc', type=float, default=0.0, help='Single-scale domain adversarial loss weight (deprecated for MSPAD, use weight_loss_ms_disc instead)')
     parser.add_argument('--weight_loss_ms_disc', type=float, default=0.3)  # 多尺度域对抗损失权重（新增）
     parser.add_argument('--weight_loss_pred', type=float, default=1.0)
     parser.add_argument('--weight_loss_src_sup', type=float, default=0.1)

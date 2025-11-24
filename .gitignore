@@ -12,6 +12,6 @@ main/__pycache__/*
 .DS_Store、
 
 results/*
-datasets/*
+datasets/
 experiment_results/
 results/

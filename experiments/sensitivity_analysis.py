@@ -32,9 +32,11 @@ import subprocess
 import argparse
 import json
 import pandas as pd
+import re
 from datetime import datetime
 from typing import Dict, Any, Optional
 import torch
+from sklearn.metrics import roc_curve, auc
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -55,6 +57,66 @@ def print_colored(message: str, color: str = Colors.NC):
     print(f"{color}{message}{Colors.NC}")
 
 
+def calculate_auroc_from_predictions(pred_file):
+    """从预测文件中计算AUROC"""
+    try:
+        if not os.path.exists(pred_file):
+            print_colored(f"Warning: Prediction file not found: {pred_file}", Colors.YELLOW)
+            return None
+
+        df = pd.read_csv(pred_file)
+
+        if 'y' not in df.columns or 'y_pred' not in df.columns:
+            print_colored(f"Warning: Required columns not found in {pred_file}", Colors.YELLOW)
+            return None
+
+        y_true = df['y'].values
+        y_scores = df['y_pred'].values
+
+        # 计算ROC曲线和AUC
+        fpr, tpr, _ = roc_curve(y_true, y_scores)
+        roc_auc = auc(fpr, tpr)
+
+        return roc_auc
+
+    except Exception as e:
+        print_colored(f"Error calculating AUROC for {pred_file}: {e}", Colors.YELLOW)
+        return None
+
+
+def extract_metrics_from_log(log_file):
+    """从日志文件中提取评估指标"""
+    metrics = {}
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+            # 提取AUPRC
+            auprc_match = re.search(r'AUPRC score is\s*:\s*([\d.]+)', content)
+            if auprc_match:
+                metrics['AUPRC'] = float(auprc_match.group(1))
+
+            # 提取Best F1 Score
+            f1_match = re.search(r'Best F1 score is\s*:\s*([\d.]+)', content)
+            if f1_match:
+                metrics['Best_F1'] = float(f1_match.group(1))
+
+            # 提取Precision
+            prec_match = re.search(r'Best Prec score is\s*:\s*([\d.]+)', content)
+            if prec_match:
+                metrics['Precision'] = float(prec_match.group(1))
+
+            # 提取Recall
+            rec_match = re.search(r'Best Rec score is\s*:\s*([\d.]+)', content)
+            if rec_match:
+                metrics['Recall'] = float(rec_match.group(1))
+
+    except Exception as e:
+        print_colored(f"Error reading {log_file}: {e}", Colors.YELLOW)
+
+    return metrics
+
+
 def clear_gpu_cache():
     """
     清理GPU显存缓存
@@ -72,21 +134,9 @@ def clear_gpu_cache():
 SENSITIVITY_CONFIGS = {
     'weight_loss_ms_disc': {
         'name': 'Multi-Scale Domain Adversarial Loss Weight',
-        'values': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7],
+        'values': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0, 1.5, 5.0],
         'base_config': {
-            'weight_loss_disc': 0.5,
-            'weight_loss_pred': 1.0,
-            'weight_loss_src_sup': 0.1,
-            'weight_loss_trg_inj': 0.1,
-            'prototypical_margin': 1.0,
-            'scale_weights': [0.1, 0.3, 0.6],
-        },
-    },
-    'weight_loss_disc': {
-        'name': 'Single-Scale Domain Adversarial Loss Weight',
-        'values': [0.0, 0.1, 0.3, 0.5, 0.7, 1.0],
-        'base_config': {
-            'weight_loss_ms_disc': 0.3,
+            'weight_loss_disc': 0.0,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
             'weight_loss_trg_inj': 0.1,
@@ -96,9 +146,9 @@ SENSITIVITY_CONFIGS = {
     },
     'prototypical_margin': {
         'name': 'Prototypical Network Margin',
-        'values': [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5],
+        'values': [0.01, 0.1, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 5.0, 10.0, 50.0],
         'base_config': {
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -108,9 +158,9 @@ SENSITIVITY_CONFIGS = {
     },
     'weight_loss_src_sup': {
         'name': 'Source Supervised Contrastive Loss Weight',
-        'values': [0.0, 0.05, 0.1, 0.2, 0.3],
+        'values': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0, 1.5, 5.0],
         'base_config': {
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_trg_inj': 0.1,
@@ -120,9 +170,9 @@ SENSITIVITY_CONFIGS = {
     },
     'weight_loss_trg_inj': {
         'name': 'Target Injection Contrastive Loss Weight',
-        'values': [0.0, 0.05, 0.1, 0.2, 0.3],
+        'values': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1.0, 1.5, 5.0],
         'base_config': {
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -142,7 +192,7 @@ SENSITIVITY_CONFIGS = {
             [0.0, 0.5, 0.5],
         ],
         'base_config': {
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -186,6 +236,22 @@ DATASET_CONFIGS = {
         "num_channels_TCN": "64-128-256",
         "hidden_dim_MLP": 512,
     },
+    "ALFA": {
+        "path_src": "datasets/ALFA",
+        "path_trg": "datasets/ALFA",
+        "batch_size": 128,
+        "dropout": 0.1,
+        "num_channels_TCN": "64-128-256",
+        "hidden_dim_MLP": 512,
+    },
+    "UAV": {
+        "path_src": "datasets/UAV",
+        "path_trg": "datasets/UAV",
+        "batch_size": 128,
+        "dropout": 0.1,
+        "num_channels_TCN": "64-128-256",
+        "hidden_dim_MLP": 512,
+    },
 }
 
 # 默认训练参数
@@ -218,6 +284,7 @@ def get_summary_csv_path(dataset: str, src: str) -> str:
         "smd": f'MSPAD_SMD_{src}.csv',
         "boiler": f'MSPAD_Boiler_{src}.csv',
         "fwuav": f'MSPAD_FWUAV_{src}.csv',
+        "uav": f'MSPAD_UAV_{src}.csv',
     }
     fname = fname_map.get(dataset_lower, f'MSPAD_test_{src}.csv')
     return os.path.join(SUMMARY_DIR, fname)
@@ -318,6 +385,36 @@ def run_command(cmd: list, task_name: str) -> bool:
         return False
 
 
+def find_experiment_results_dir(exp_folder: str, preferred_src_trg: str = None) -> str:
+    """查找实验结果目录
+    
+    Args:
+        exp_folder: 实验文件夹名
+        preferred_src_trg: 首选的源-目标对（如"002-026"）
+    
+    Returns:
+        实际包含结果的目录名，如果没找到返回None
+    """
+    exp_path = os.path.join(RESULTS_DIR, exp_folder)
+    if not os.path.exists(exp_path):
+        return None
+    
+    # 如果首选目录存在，直接返回
+    if preferred_src_trg and os.path.exists(os.path.join(exp_path, preferred_src_trg)):
+        return preferred_src_trg
+    
+    # 扫描所有子目录，找到包含eval_train.log的目录
+    for item in os.listdir(exp_path):
+        item_path = os.path.join(exp_path, item)
+        if os.path.isdir(item_path):
+            log_file = os.path.join(item_path, "eval_train.log")
+            pred_file = os.path.join(item_path, "predictions_test_target.csv")
+            if os.path.exists(log_file) and os.path.exists(pred_file):
+                return item
+    
+    return None
+
+
 def save_sensitivity_result(
     dataset: str,
     src: str,
@@ -328,30 +425,49 @@ def save_sensitivity_result(
 ) -> bool:
     """保存敏感性分析结果到CSV文件"""
     try:
-        summary_csv = get_summary_csv_path(dataset, src)
-        if not os.path.exists(summary_csv):
+        # 查找实际的实验结果目录
+        actual_src_trg = find_experiment_results_dir(exp_folder, f"{src}-{trg}")
+        if not actual_src_trg:
+            print_colored(f"⚠ Warning: No experiment results found in {exp_folder}", Colors.YELLOW)
             return False
-        
-        # 读取并筛选结果
-        df = pd.read_csv(summary_csv)
-        matching_rows = df[(df['src_id'] == src) & (df['trg_id'] == trg)]
-        if matching_rows.empty:
-            return False
-        
-        # 取最后一行并添加参数信息
-        current_result = matching_rows.tail(1).copy()
-        current_result['param_name'] = param_name
-        current_result['param_value'] = format_param_value(param_value)
-        
+
+        # 构建文件路径
+        pred_file = os.path.join(RESULTS_DIR, exp_folder, actual_src_trg, "predictions_test_target.csv")
+        log_file = os.path.join(RESULTS_DIR, exp_folder, actual_src_trg, "eval_train.log")
+
+        print_colored(f"Using results from: {actual_src_trg}", Colors.BLUE)
+
+        # 计算AUROC
+        auroc = calculate_auroc_from_predictions(pred_file)
+
+        # 提取其他指标
+        metrics = extract_metrics_from_log(log_file)
+        auprc = metrics.get('AUPRC')
+        best_f1 = metrics.get('Best_F1')
+
+        # 准备结果数据
+        result_data = {
+            'dataset': dataset,
+            'src_trg': actual_src_trg,  # 使用实际的源-目标对
+            'param_name': param_name,
+            'param_value': format_param_value(param_value),
+            'exp_folder': exp_folder,
+            'AUROC': auroc if auroc is not None else float('nan'),
+            'AUPRC': auprc if auprc is not None else float('nan'),
+            'Best_F1': best_f1 if best_f1 is not None else float('nan'),
+        }
+
         # 保存到参数敏感性分析实验文件夹
         os.makedirs(SENSITIVITY_DIR, exist_ok=True)
         sensitivity_csv = os.path.join(SENSITIVITY_DIR, f'Sensitivity_{dataset}_{src}_{trg}.csv')
-        
+
         # 追加或创建文件
         mode = 'a' if os.path.exists(sensitivity_csv) else 'w'
         header = mode == 'w'
-        current_result.to_csv(sensitivity_csv, mode=mode, header=header, index=False)
-        
+
+        df = pd.DataFrame([result_data])
+        df.to_csv(sensitivity_csv, mode=mode, header=header, index=False)
+
         print_colored(f"✓ 结果已保存到: {sensitivity_csv}", Colors.GREEN)
         return True
     except Exception as e:
@@ -433,7 +549,7 @@ def main():
     )
     
     parser.add_argument("--dataset", type=str, default="MSL",
-                       choices=["MSL", "SMD", "Boiler", "FWUAV"],
+                       choices=["MSL", "SMD", "Boiler", "FWUAV", "ALFA", "UAV"],
                        help="Dataset name (default: MSL)")
     parser.add_argument("--src", type=str, default="F-5",
                        help="Source domain ID (default: F-5)")

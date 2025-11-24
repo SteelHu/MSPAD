@@ -41,6 +41,18 @@ def get_dataset(args, domain_type, split_type):
         else:
             return FWUAVDataset_trg(args.path_trg, subject_id=args.id_trg, split_type=split_type, is_cuda=True)
 
+    elif "ALFA" in args.path_src:
+        if domain_type == "source":
+            return ALFADataset(args.path_src, subject_id=args.id_src, split_type=split_type, is_cuda=True)
+        else:
+            return ALFADataset_trg(args.path_trg, subject_id=args.id_trg, split_type=split_type, is_cuda=True)
+
+    elif "UAV" in args.path_src:
+        if domain_type == "source":
+            return UAVDataset(args.path_src, subject_id=args.id_src, split_type=split_type, is_cuda=True)
+        else:
+            return UAVDataset_trg(args.path_trg, subject_id=args.id_trg, split_type=split_type, is_cuda=True)
+
 class MSLDataset(Dataset):
     def __init__(self, root_dir, subject_id, split_type="train", is_cuda=True, verbose=False):
         self.root_dir = root_dir
@@ -576,6 +588,10 @@ def get_output_dim(args):
         output_dim = 1
     elif "FWUAV" in args.path_src:
         output_dim = 1
+    elif "ALFA" in args.path_src:
+        output_dim = 1
+    elif "UAV" in args.path_src:
+        output_dim = 1
     else:
         output_dim = 6
 
@@ -829,3 +845,445 @@ class FWUAVDataset_trg(Dataset):
 
 
 
+
+
+class ALFADataset(Dataset):
+    """ALFA无人机异常检测数据集"""
+
+    def __init__(self, root_dir, subject_id, split_type="train", is_cuda=True, verbose=False):
+        self.root_dir = root_dir
+        self.subject_id = int(subject_id)
+        self.split_type = split_type
+        self.is_cuda = is_cuda
+        self.verbose = verbose
+
+        self.load_sequence()
+
+    def __len__(self):
+        return len(self.sequence)
+
+    def __getitem__(self, id_):
+        sequence = self.sequence[id_]
+        pid_ = np.random.randint(0, len(self.positive))
+        positive = self.positive[pid_]
+        random_choice = np.random.randint(0, 10)
+        if random_choice == 0 and len(self.negative) > 0:
+            nid_ = np.random.randint(0, len(self.negative))
+            negative = self.negative[nid_]
+        else:
+            negative = get_injector(sequence, self.mean, self.std)
+
+        sequence_mask = np.ones(sequence.shape)
+        label = self.label[id_]
+
+        if self.is_cuda:
+            sequence = torch.Tensor(sequence).float().cuda()
+            sequence_mask = torch.Tensor(sequence_mask).long().cuda()
+            positive = torch.Tensor(positive).float().cuda()
+            negative = torch.Tensor(negative).float().cuda()
+            label = torch.Tensor([label]).long().cuda()
+        else:
+            sequence = torch.Tensor(sequence).float()
+            sequence_mask = torch.Tensor(sequence_mask).long()
+            positive = torch.Tensor(positive).float()
+            negative = torch.Tensor(negative).float()
+            label = torch.Tensor([label]).long()
+
+        sample = {"sequence": sequence, "sequence_mask": sequence_mask, "positive": positive, "negative": negative, "label": label}
+
+        return sample
+
+    def load_sequence(self):
+        """加载ALFA数据集"""
+        # 读取features.csv (传感器数据)
+        features_path = os.path.join(self.root_dir, f'{self.subject_id:03d}', 'features.csv')
+        features_df = pd.read_csv(features_path)
+
+        # 读取labels.csv (异常标签)
+        labels_path = os.path.join(self.root_dir, f'{self.subject_id:03d}', 'labels.csv')
+        labels_df = pd.read_csv(labels_path)
+
+        # 获取特征数据 (排除timestamp列，22个传感器特征)
+        self.sequence = features_df.iloc[:, 1:].values.astype(float)  # 跳过timestamp列
+
+        # 获取标签数据 (failure_status列)
+        self.label = labels_df['failure_status'].values.astype(int)
+
+        if self.verbose:
+            print(f"ALFA Dataset {self.subject_id:03d}:")
+            print(f"  Features shape: {self.sequence.shape}")
+            print(f"  Labels shape: {self.label.shape}")
+            print(f"  Normal samples: {np.sum(self.label == 0)}")
+            print(f"  Abnormal samples: {np.sum(self.label == 1)}")
+
+        # 数据标准化
+        self.mean = np.mean(self.sequence, axis=0)
+        self.std = np.std(self.sequence, axis=0)
+        self.std[self.std == 0.0] = 1.0
+        self.sequence = (self.sequence - self.mean) / self.std
+
+        # 处理NaN值
+        if np.any(np.isnan(self.sequence)):
+            print(f'ALFA Dataset {self.subject_id:03d}: Data contains NaN, replacing with zero')
+            self.sequence = np.nan_to_num(self.sequence)
+
+        # 转换为窗口 (窗口大小100，步长1)
+        wsz, stride = 100, 1
+        self.sequence, self.label = self.convert_to_windows(wsz, stride)
+
+        # 分离正样本和负样本
+        self.positive = self.sequence[self.label == 0]  # 正常样本
+        self.negative = self.sequence[self.label == 1]  # 异常样本
+
+        if self.verbose:
+            print(f"  After windowing: {len(self.sequence)} windows")
+            print(f"  Positive samples: {len(self.positive)}")
+            print(f"  Negative samples: {len(self.negative)}")
+
+    def convert_to_windows(self, w_size, stride):
+        """将序列转换为窗口"""
+        windows = []
+        wlabels = []
+        sz = int((self.sequence.shape[0] - w_size) / stride)
+        for i in range(0, sz):
+            st = i * stride
+            w = self.sequence[st:st+w_size]
+            # 如果窗口中包含任何异常点，则标记为异常
+            if self.label[st:st+w_size].any() > 0:
+                lbl = 1
+            else:
+                lbl = 0
+            windows.append(w)
+            wlabels.append(lbl)
+        return np.stack(windows), np.stack(wlabels)
+
+    def get_statistic(self):
+        """获取数据集统计信息"""
+        return self.mean, self.std
+
+
+class ALFADataset_trg(Dataset):
+    """ALFA目标域数据集"""
+
+    def __init__(self, root_dir, subject_id, split_type="train", is_cuda=True, verbose=False):
+        self.root_dir = root_dir
+        self.subject_id = int(subject_id)
+        self.split_type = split_type
+        self.is_cuda = is_cuda
+        self.verbose = verbose
+
+        self.load_sequence()
+
+    def __len__(self):
+        return len(self.sequence)
+
+    def __getitem__(self, id_):
+        sequence = self.sequence[id_]
+        pid_ = abs(id_ - np.random.randint(1, 11))
+        positive = self.sequence[pid_]
+        self.positive = positive
+        negative = get_injector(sequence, self.mean, self.std)
+        self.negative = negative
+
+        sequence_mask = np.ones(sequence.shape)
+        label = self.label[id_]
+
+        if self.is_cuda:
+            sequence = torch.Tensor(sequence).float().cuda()
+            sequence_mask = torch.Tensor(sequence_mask).long().cuda()
+            positive = torch.Tensor(positive).float().cuda()
+            negative = torch.Tensor(negative).float().cuda()
+            label = torch.Tensor([label]).long().cuda()
+        else:
+            sequence = torch.Tensor(sequence).float()
+            sequence_mask = torch.Tensor(sequence_mask).long()
+            positive = torch.Tensor(positive).float()
+            negative = torch.Tensor(negative).float()
+            label = torch.Tensor([label]).long()
+
+        sample = {"sequence": sequence, "sequence_mask": sequence_mask, "positive": positive, "negative": negative, "label": label}
+
+        return sample
+
+    def load_sequence(self):
+        """加载ALFA目标域数据集"""
+        # 读取features.csv (传感器数据)
+        features_path = os.path.join(self.root_dir, f'{self.subject_id:03d}', 'features.csv')
+        features_df = pd.read_csv(features_path)
+
+        # 读取labels.csv (异常标签)
+        labels_path = os.path.join(self.root_dir, f'{self.subject_id:03d}', 'labels.csv')
+        labels_df = pd.read_csv(labels_path)
+
+        # 获取特征数据 (排除timestamp列，22个传感器特征)
+        self.sequence = features_df.iloc[:, 1:].values.astype(float)  # 跳过timestamp列
+
+        # 获取标签数据 (failure_status列)
+        self.label = labels_df['failure_status'].values.astype(int)
+
+        if self.verbose:
+            print(f"ALFA Target Dataset {self.subject_id:03d}:")
+            print(f"  Features shape: {self.sequence.shape}")
+            print(f"  Labels shape: {self.label.shape}")
+            print(f"  Normal samples: {np.sum(self.label == 0)}")
+            print(f"  Abnormal samples: {np.sum(self.label == 1)}")
+
+        # 数据标准化
+        self.mean = np.mean(self.sequence, axis=0)
+        self.std = np.std(self.sequence, axis=0)
+        self.std[self.std == 0.0] = 1.0
+        self.sequence = (self.sequence - self.mean) / self.std
+
+        # 处理NaN值
+        if np.any(np.isnan(self.sequence)):
+            print(f'ALFA Target Dataset {self.subject_id:03d}: Data contains NaN, replacing with zero')
+            self.sequence = np.nan_to_num(self.sequence)
+
+        # 转换为窗口 (窗口大小100，步长1)
+        wsz, stride = 100, 1
+        self.sequence, self.label = self.convert_to_windows(wsz, stride)
+
+        if self.verbose:
+            print(f"  After windowing: {len(self.sequence)} windows")
+
+    def convert_to_windows(self, w_size, stride):
+        """将序列转换为窗口"""
+        windows = []
+        wlabels = []
+        sz = int((self.sequence.shape[0] - w_size) / stride)
+        for i in range(0, sz):
+            st = i * stride
+            w = self.sequence[st:st+w_size]
+            # 如果窗口中包含任何异常点，则标记为异常
+            if self.label[st:st+w_size].any() > 0:
+                lbl = 1
+            else:
+                lbl = 0
+            windows.append(w)
+            wlabels.append(lbl)
+        return np.stack(windows), np.stack(wlabels)
+
+    def get_statistic(self):
+        """获取目标域数据集统计信息"""
+        return self.mean, self.std
+
+
+class UAVDataset(Dataset):
+    """UAV无人机异常检测数据集"""
+
+    def __init__(self, root_dir, subject_id, split_type="train", is_cuda=True, verbose=False):
+        self.root_dir = root_dir
+        self.subject_id = int(subject_id)
+        self.split_type = split_type
+        self.is_cuda = is_cuda
+        self.verbose = verbose
+
+        self.load_sequence()
+
+    def __len__(self):
+        return len(self.sequence)
+
+    def __getitem__(self, id_):
+        sequence = self.sequence[id_]
+        pid_ = np.random.randint(0, len(self.positive))
+        positive = self.positive[pid_]
+        random_choice = np.random.randint(0, 10)
+        if random_choice == 0 and len(self.negative) > 0:
+            nid_ = np.random.randint(0, len(self.negative))
+            negative = self.negative[nid_]
+        else:
+            negative = get_injector(sequence, self.mean, self.std)
+
+        sequence_mask = np.ones(sequence.shape)
+        label = self.label[id_]
+
+        if self.is_cuda:
+            sequence = torch.Tensor(sequence).float().cuda()
+            sequence_mask = torch.Tensor(sequence_mask).long().cuda()
+            positive = torch.Tensor(positive).float().cuda()
+            negative = torch.Tensor(negative).float().cuda()
+            label = torch.Tensor([label]).long().cuda()
+        else:
+            sequence = torch.Tensor(sequence).float()
+            sequence_mask = torch.Tensor(sequence_mask).long()
+            positive = torch.Tensor(positive).float()
+            negative = torch.Tensor(negative).float()
+            label = torch.Tensor([label]).long()
+
+        sample = {"sequence": sequence, "sequence_mask": sequence_mask, "positive": positive, "negative": negative, "label": label}
+
+        return sample
+
+    def load_sequence(self):
+        """加载UAV数据集"""
+        # 读取features.csv (传感器数据)
+        features_path = os.path.join(self.root_dir, f'flight_{self.subject_id:03d}', 'features.csv')
+        features_df = pd.read_csv(features_path)
+
+        # 读取labels.csv (异常标签)
+        labels_path = os.path.join(self.root_dir, f'flight_{self.subject_id:03d}', 'labels.csv')
+        labels_df = pd.read_csv(labels_path)
+
+        # 获取特征数据 (排除timestamp列，22个传感器特征)
+        self.sequence = features_df.iloc[:, 1:].values.astype(float)  # 跳过timestamp列
+
+        # 获取标签数据 (failure_status列)
+        self.label = labels_df['failure_status'].values.astype(int)
+
+        if self.verbose:
+            print(f"UAV Dataset flight_{self.subject_id:03d}:")
+            print(f"  Features shape: {self.sequence.shape}")
+            print(f"  Labels shape: {self.label.shape}")
+            print(f"  Normal samples: {np.sum(self.label == 0)}")
+            print(f"  Abnormal samples: {np.sum(self.label == 1)}")
+
+        # 数据标准化
+        self.mean = np.mean(self.sequence, axis=0)
+        self.std = np.std(self.sequence, axis=0)
+        self.std[self.std == 0.0] = 1.0
+        self.sequence = (self.sequence - self.mean) / self.std
+
+        # 处理NaN值
+        if np.any(np.isnan(self.sequence)):
+            print(f'UAV Dataset flight_{self.subject_id:03d}: Data contains NaN, replacing with zero')
+            self.sequence = np.nan_to_num(self.sequence)
+
+        # 转换为窗口 (窗口大小100，步长1)
+        wsz, stride = 100, 1
+        self.sequence, self.label = self.convert_to_windows(wsz, stride)
+
+        # 分离正样本和负样本
+        self.positive = self.sequence[self.label == 0]  # 正常样本
+        self.negative = self.sequence[self.label == 1]  # 异常样本
+
+        if self.verbose:
+            print(f"  After windowing: {len(self.sequence)} windows")
+            print(f"  Positive samples: {len(self.positive)}")
+            print(f"  Negative samples: {len(self.negative)}")
+
+    def convert_to_windows(self, w_size, stride):
+        """将序列转换为窗口"""
+        windows = []
+        wlabels = []
+        sz = int((self.sequence.shape[0] - w_size) / stride)
+        for i in range(0, sz):
+            st = i * stride
+            w = self.sequence[st:st+w_size]
+            # 如果窗口中包含任何异常点，则标记为异常
+            if self.label[st:st+w_size].any() > 0:
+                lbl = 1
+            else:
+                lbl = 0
+            windows.append(w)
+            wlabels.append(lbl)
+        return np.stack(windows), np.stack(wlabels)
+
+    def get_statistic(self):
+        """获取数据集统计信息"""
+        return self.mean, self.std
+
+
+class UAVDataset_trg(Dataset):
+    """UAV目标域数据集"""
+
+    def __init__(self, root_dir, subject_id, split_type="train", is_cuda=True, verbose=False):
+        self.root_dir = root_dir
+        self.subject_id = int(subject_id)
+        self.split_type = split_type
+        self.is_cuda = is_cuda
+        self.verbose = verbose
+
+        self.load_sequence()
+
+    def __len__(self):
+        return len(self.sequence)
+
+    def __getitem__(self, id_):
+        sequence = self.sequence[id_]
+        pid_ = abs(id_ - np.random.randint(1, 11))
+        positive = self.sequence[pid_]
+        self.positive = positive
+        negative = get_injector(sequence, self.mean, self.std)
+        self.negative = negative
+
+        sequence_mask = np.ones(sequence.shape)
+        label = self.label[id_]
+
+        if self.is_cuda:
+            sequence = torch.Tensor(sequence).float().cuda()
+            sequence_mask = torch.Tensor(sequence_mask).long().cuda()
+            positive = torch.Tensor(positive).float().cuda()
+            negative = torch.Tensor(negative).float().cuda()
+            label = torch.Tensor([label]).long().cuda()
+        else:
+            sequence = torch.Tensor(sequence).float()
+            sequence_mask = torch.Tensor(sequence_mask).long()
+            positive = torch.Tensor(positive).float()
+            negative = torch.Tensor(negative).float()
+            label = torch.Tensor([label]).long()
+
+        sample = {"sequence": sequence, "sequence_mask": sequence_mask, "positive": positive, "negative": negative, "label": label}
+
+        return sample
+
+    def load_sequence(self):
+        """加载UAV目标域数据集"""
+        # 读取features.csv (传感器数据)
+        features_path = os.path.join(self.root_dir, f'flight_{self.subject_id:03d}', 'features.csv')
+        features_df = pd.read_csv(features_path)
+
+        # 读取labels.csv (异常标签)
+        labels_path = os.path.join(self.root_dir, f'flight_{self.subject_id:03d}', 'labels.csv')
+        labels_df = pd.read_csv(labels_path)
+
+        # 获取特征数据 (排除timestamp列，22个传感器特征)
+        self.sequence = features_df.iloc[:, 1:].values.astype(float)  # 跳过timestamp列
+
+        # 获取标签数据 (failure_status列)
+        self.label = labels_df['failure_status'].values.astype(int)
+
+        if self.verbose:
+            print(f"UAV Target Dataset flight_{self.subject_id:03d}:")
+            print(f"  Features shape: {self.sequence.shape}")
+            print(f"  Labels shape: {self.label.shape}")
+            print(f"  Normal samples: {np.sum(self.label == 0)}")
+            print(f"  Abnormal samples: {np.sum(self.label == 1)}")
+
+        # 数据标准化
+        self.mean = np.mean(self.sequence, axis=0)
+        self.std = np.std(self.sequence, axis=0)
+        self.std[self.std == 0.0] = 1.0
+        self.sequence = (self.sequence - self.mean) / self.std
+
+        # 处理NaN值
+        if np.any(np.isnan(self.sequence)):
+            print(f'UAV Target Dataset flight_{self.subject_id:03d}: Data contains NaN, replacing with zero')
+            self.sequence = np.nan_to_num(self.sequence)
+
+        # 转换为窗口 (窗口大小100，步长1)
+        wsz, stride = 100, 1
+        self.sequence, self.label = self.convert_to_windows(wsz, stride)
+
+        if self.verbose:
+            print(f"  After windowing: {len(self.sequence)} windows")
+
+    def convert_to_windows(self, w_size, stride):
+        """将序列转换为窗口"""
+        windows = []
+        wlabels = []
+        sz = int((self.sequence.shape[0] - w_size) / stride)
+        for i in range(0, sz):
+            st = i * stride
+            w = self.sequence[st:st+w_size]
+            # 如果窗口中包含任何异常点，则标记为异常
+            if self.label[st:st+w_size].any() > 0:
+                lbl = 1
+            else:
+                lbl = 0
+            windows.append(w)
+            wlabels.append(lbl)
+        return np.stack(windows), np.stack(wlabels)
+
+    def get_statistic(self):
+        """获取目标域数据集统计信息"""
+        return self.mean, self.std

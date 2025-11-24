@@ -53,12 +53,13 @@ import argparse
 import json
 import pandas as pd
 import numpy as np
+import re
 from datetime import datetime
 from typing import Dict, List, Optional
+from sklearn.metrics import roc_curve, auc
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 # 路径常量
 SUMMARY_DIR = "experiment_results"
 ABLATION_DIR = os.path.join(SUMMARY_DIR, "消融实验")
@@ -79,6 +80,96 @@ def print_colored(message: str, color: str = Colors.NC):
     print(f"{color}{message}{Colors.NC}")
 
 
+def find_experiment_results_dir(exp_folder: str, preferred_src_trg: str = None) -> str:
+    """查找实验结果目录
+
+    Args:
+        exp_folder: 实验文件夹名
+        preferred_src_trg: 首选的源-目标对（如"002-026"）
+
+    Returns:
+        实际包含结果的目录名，如果没找到返回None
+    """
+    exp_path = os.path.join("results", exp_folder)
+    if not os.path.exists(exp_path):
+        return None
+
+    # 如果首选目录存在，直接返回
+    if preferred_src_trg and os.path.exists(os.path.join(exp_path, preferred_src_trg)):
+        return preferred_src_trg
+
+    # 扫描所有子目录，找到包含eval_train.log的目录
+    for item in os.listdir(exp_path):
+        item_path = os.path.join(exp_path, item)
+        if os.path.isdir(item_path):
+            log_file = os.path.join(item_path, "eval_train.log")
+            pred_file = os.path.join(item_path, "predictions_test_target.csv")
+            if os.path.exists(log_file) and os.path.exists(pred_file):
+                return item
+
+    return None
+
+
+def calculate_auroc_from_predictions(pred_file):
+    """从预测文件中计算AUROC"""
+    try:
+        if not os.path.exists(pred_file):
+            print_colored(f"Warning: Prediction file not found: {pred_file}", Colors.YELLOW)
+            return None
+
+        df = pd.read_csv(pred_file)
+
+        if 'y' not in df.columns or 'y_pred' not in df.columns:
+            print_colored(f"Warning: Required columns not found in {pred_file}", Colors.YELLOW)
+            return None
+
+        y_true = df['y'].values
+        y_scores = df['y_pred'].values
+
+        # 计算ROC曲线和AUC
+        fpr, tpr, _ = roc_curve(y_true, y_scores)
+        roc_auc = auc(fpr, tpr)
+
+        return roc_auc
+
+    except Exception as e:
+        print_colored(f"Error calculating AUROC for {pred_file}: {e}", Colors.YELLOW)
+        return None
+
+
+def extract_metrics_from_log(log_file):
+    """从日志文件中提取评估指标"""
+    metrics = {}
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+            # 提取AUPRC
+            auprc_match = re.search(r'AUPRC score is\s*:\s*([\d.]+)', content)
+            if auprc_match:
+                metrics['AUPRC'] = float(auprc_match.group(1))
+
+            # 提取Best F1 Score
+            f1_match = re.search(r'Best F1 score is\s*:\s*([\d.]+)', content)
+            if f1_match:
+                metrics['Best_F1'] = float(f1_match.group(1))
+
+            # 提取Precision
+            prec_match = re.search(r'Best Prec score is\s*:\s*([\d.]+)', content)
+            if prec_match:
+                metrics['Precision'] = float(prec_match.group(1))
+
+            # 提取Recall
+            rec_match = re.search(r'Best Rec score is\s*:\s*([\d.]+)', content)
+            if rec_match:
+                metrics['Recall'] = float(rec_match.group(1))
+
+    except Exception as e:
+        print_colored(f"Error reading {log_file}: {e}", Colors.YELLOW)
+
+    return metrics
+
+
 # 消融实验配置
 ABLATION_EXPERIMENTS = {
     # ========== 核心组件消融 ==========
@@ -87,7 +178,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'DACAD Baseline',
             'description': '原始DACAD（单尺度域对抗 + Deep SVDD）',
             'algo_name': 'dacad',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.0,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -99,7 +190,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'MSPAD Full',
             'description': 'MSPAD完整版（多尺度域对抗 + 原型网络 + 加权损失）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -112,7 +203,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Single-Scale + Deep SVDD',
             'description': '单尺度域对抗 + Deep SVDD（Baseline）',
             'algo_name': 'dacad',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.0,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -123,7 +214,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Multi-Scale + Deep SVDD',
             'description': '多尺度域对抗 + Deep SVDD（仅添加改进1）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -137,7 +228,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Single-Scale + Prototypical',
             'description': '单尺度域对抗 + 原型网络（仅添加改进2）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.0,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -149,7 +240,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Multi-Scale + Prototypical',
             'description': '多尺度域对抗 + 原型网络（改进1+2）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -162,7 +253,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Multi-Scale Uniform Weights',
             'description': '多尺度域对抗（均匀权重）+ 原型网络',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -175,7 +266,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Multi-Scale Weighted',
             'description': '多尺度域对抗（加权[0.1,0.3,0.6]）+ 原型网络',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -188,7 +279,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Multi-Scale Reverse Weights',
             'description': '多尺度域对抗（反向权重[0.6,0.3,0.1]）+ 原型网络',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -205,7 +296,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Layer 1 Only',
             'description': '仅低层域对抗（Layer 1）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -219,7 +310,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Layer 2 Only',
             'description': '仅中层域对抗（Layer 2）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -233,7 +324,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Layer 3 Only',
             'description': '仅高层域对抗（Layer 3）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -247,7 +338,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Layer 1+2',
             'description': '低层+中层域对抗',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -261,7 +352,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Layer 2+3',
             'description': '中层+高层域对抗',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -275,7 +366,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Layer 1+3',
             'description': '低层+高层域对抗',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -289,7 +380,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'All Layers',
             'description': '所有层域对抗（完整配置）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -303,7 +394,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Single-Scale Only',
             'description': '仅单尺度（最终层）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.0,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -328,7 +419,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'Single + Multi-Scale',
             'description': '单尺度 + 多尺度（完整配置）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -345,7 +436,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'MSPAD Full',
             'description': 'MSPAD完整版（所有损失）',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -371,7 +462,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'w/o Multi-Scale DA',
             'description': '移除多尺度域对抗损失',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.0,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -383,7 +474,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'w/o Prototypical Loss',
             'description': '移除原型网络分类损失',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 0.0,
             'weight_loss_src_sup': 0.1,
@@ -396,7 +487,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'w/o Source Sup CL',
             'description': '移除源域监督对比损失',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.0,
@@ -409,7 +500,7 @@ ABLATION_EXPERIMENTS = {
             'name': 'w/o Target Inj CL',
             'description': '移除目标域注入对比损失',
             'algo_name': 'MSPAD',
-            'weight_loss_disc': 0.5,
+            'weight_loss_disc': 0.0,  # 取消单尺度域对抗损失
             'weight_loss_ms_disc': 0.3,
             'weight_loss_pred': 1.0,
             'weight_loss_src_sup': 0.1,
@@ -493,6 +584,24 @@ def get_fwuav_files() -> List[str]:
     return sorted(files)
 
 
+def get_uav_files() -> List[str]:
+    """获取UAV数据集的所有文件列表"""
+    uav_dir = 'datasets/UAV'
+    if not os.path.exists(uav_dir):
+        print_colored(f"Error: UAV dataset directory not found: {uav_dir}", Colors.RED)
+        return []
+
+    files = []
+    for item in os.listdir(uav_dir):
+        item_path = os.path.join(uav_dir, item)
+        if os.path.isdir(item_path) and item.startswith('flight_'):
+            # 提取flight编号，如 'flight_002' -> '002'
+            flight_id = item.replace('flight_', '')
+            files.append(flight_id)
+
+    return sorted(files)
+
+
 def get_dataset_files(dataset: str) -> List[str]:
     """根据数据集名称获取文件列表"""
     if dataset == "MSL":
@@ -503,6 +612,8 @@ def get_dataset_files(dataset: str) -> List[str]:
         return get_boiler_files()
     elif dataset == "FWUAV":
         return get_fwuav_files()
+    elif dataset == "UAV":
+        return get_uav_files()
     else:
         print_colored(f"Unknown dataset: {dataset}", Colors.RED)
         return []
@@ -543,8 +654,82 @@ def get_dataset_config(dataset: str) -> dict:
             "num_channels_TCN": "64-128-256",
             "hidden_dim_MLP": 512,
         },
+        "ALFA": {
+            "path_src": "datasets/ALFA",
+            "path_trg": "datasets/ALFA",
+            "batch_size": 128,
+            "dropout": 0.1,
+            "num_channels_TCN": "64-128-256",
+            "hidden_dim_MLP": 512,
+        },
+        "UAV": {
+            "path_src": "datasets/UAV",
+            "path_trg": "datasets/UAV",
+            "batch_size": 128,
+            "dropout": 0.1,
+            "num_channels_TCN": "64-128-256",
+            "hidden_dim_MLP": 512,
+        },
     }
     return configs.get(dataset, {})
+
+
+def save_ablation_result(
+    dataset: str,
+    src: str,
+    trg: str,
+    exp_id: str,
+    exp_folder: str,
+) -> bool:
+    """保存消融实验结果到CSV文件"""
+    try:
+        # 查找实际的实验结果目录
+        actual_src_trg = find_experiment_results_dir(exp_folder, f"{src}-{trg}")
+        if not actual_src_trg:
+            print_colored(f"⚠ Warning: No experiment results found in {exp_folder}", Colors.YELLOW)
+            return False
+
+        # 构建预测文件路径
+        pred_file = os.path.join("results", exp_folder, actual_src_trg, "predictions_test_target.csv")
+        log_file = os.path.join("results", exp_folder, actual_src_trg, "eval_train.log")
+
+        print_colored(f"Using results from: {actual_src_trg}", Colors.BLUE)
+
+        # 计算AUROC
+        auroc = calculate_auroc_from_predictions(pred_file)
+
+        # 提取其他指标
+        metrics = extract_metrics_from_log(log_file)
+        auprc = metrics.get('AUPRC')
+        best_f1 = metrics.get('Best_F1')
+
+        # 准备结果数据
+        result_data = {
+            'dataset': dataset,
+            'src_trg': actual_src_trg,  # 使用实际的源-目标对
+            'exp_id': exp_id,
+            'exp_folder': exp_folder,
+            'AUROC': auroc if auroc is not None else float('nan'),
+            'AUPRC': auprc if auprc is not None else float('nan'),
+            'Best_F1': best_f1 if best_f1 is not None else float('nan'),
+        }
+
+        # 保存到消融实验文件夹
+        os.makedirs(ABLATION_DIR, exist_ok=True)
+        ablation_csv = os.path.join(ABLATION_DIR, f'Ablation_{dataset}_{src}_{trg}.csv')
+
+        # 追加或创建文件
+        mode = 'a' if os.path.exists(ablation_csv) else 'w'
+        header = mode == 'w'
+
+        df = pd.DataFrame([result_data])
+        df.to_csv(ablation_csv, mode=mode, header=header, index=False)
+
+        print_colored(f"✓ 结果已保存到: {ablation_csv}", Colors.GREEN)
+        return True
+    except Exception as e:
+        print_colored(f"⚠ Warning: Failed to save ablation results: {e}", Colors.YELLOW)
+        return False
 
 
 def run_ablation_experiment(
@@ -677,6 +862,9 @@ def run_ablation_experiment(
         print_colored(f"❌ Evaluation error: {e}", Colors.RED)
         return False
     
+    # 保存结果
+    save_ablation_result(dataset, src, trg, exp_id, exp_folder)
+
     print_colored(f"✓ Experiment {exp_id} completed successfully", Colors.GREEN)
     return True
 
@@ -687,7 +875,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     
-    parser.add_argument("--dataset", type=str, default="MSL", choices=["MSL", "SMD", "Boiler", "FWUAV"],
+    parser.add_argument("--dataset", type=str, default="MSL", choices=["MSL", "SMD", "Boiler", "FWUAV", "ALFA", "UAV"],
                        help="Dataset name (default: MSL)")
     parser.add_argument("--src", type=str, default="F-5",
                        help="Source domain ID (default: F-5 for MSL, 1 for FWUAV)")
@@ -709,6 +897,10 @@ def main():
     # 设置数据集特定的默认参数
     if args.dataset == "FWUAV" and args.src == "F-5":
         args.src = "1"  # FWUAV默认使用场景1作为源域
+    if args.dataset == "ALFA" and args.src == "F-5":
+        args.src = "001"  # ALFA默认使用flight 001作为源域
+    if args.dataset == "UAV" and args.src == "F-5":
+        args.src = "002"  # UAV默认使用flight 002作为源域
 
     # 检查参数有效性
     if not args.all_targets and args.trg is None:
