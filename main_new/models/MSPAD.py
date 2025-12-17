@@ -20,55 +20,97 @@ from torch.autograd import Function
 from utils.tcn_no_norm import TemporalConvNet, TemporalBlock
 from utils.mlp import MLP
 
-# 导入原始DACAD的组件
-try:
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'main', 'models'))
-    from dacad import ReverseLayerF, Discriminator
-    # 注意：不再导入DeepSVDD，使用PrototypicalClassifier替代
-except ImportError:
-    # 如果无法导入，则在这里定义
-    class ReverseLayerF(Function):
-        @staticmethod
-        def forward(ctx, x, alpha):
-            ctx.alpha = alpha
-            return x.view_as(x)
-        
-        @staticmethod
-        def backward(ctx, grad_output):
-            output = grad_output.neg() * ctx.alpha
-            return output, None
+class ReverseLayerF(Function):
+    """
+    梯度反转层 (Gradient Reversal Layer)
+    =====================================
     
-    class Discriminator(nn.Module):
-        def __init__(self, input_dim, hidden_dim=256, output_dim=1):
-            super(Discriminator, self).__init__()
-            self.model = nn.Sequential(
-                nn.Linear(input_dim, hidden_dim),
-                nn.LeakyReLU(0.2),
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.LeakyReLU(0.2),
-                nn.Linear(hidden_dim, output_dim),
-                nn.Sigmoid()
-            )
-        
-        def forward(self, x):
-            return self.model(x)
+    功能：在前向传播时不改变输入，在反向传播时将梯度反转
     
-    class DeepSVDD(nn.Module):
-        def __init__(self, input_dim, hidden_dim, output_dim, use_batch_norm):
-            super(DeepSVDD, self).__init__()
-            self.center = nn.Parameter(torch.Tensor(input_dim))
-            self.radius = nn.Parameter(torch.Tensor(1))
-            self._init_weights()
+    用途：域对抗训练
+    - 判别器试图区分源域和目标域 → 梯度为正
+    - 特征提取器试图混淆判别器 → 梯度反转为负
+    
+    这样特征提取器会学到域不变的特征表示
+    """
+    @staticmethod
+    def forward(ctx, x, alpha):
+        """
+        前向传播：直接返回输入，不做任何改变
         
-        def _init_weights(self):
-            nn.init.constant_(self.center, 0.0)
-            nn.init.constant_(self.radius, 0.0)
+        参数:
+            x: 输入特征
+            alpha: 梯度反转的权重系数（随训练逐渐增大）
+        """
+        ctx.alpha = alpha
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        反向传播：将梯度取反并乘以 alpha
         
-        def forward(self, x, statics):
-            tmp_x = x.clone()
-            dist = torch.sum((tmp_x - self.center) ** 2, dim=1)
-            squared_radius = self.radius ** 2
-            return dist, self.center, squared_radius
+        参数:
+            grad_output: 从后续层传回来的梯度
+        
+        返回:
+            反转后的梯度
+        """
+        output = grad_output.neg() * ctx.alpha
+        return output, None
+
+
+class Discriminator(nn.Module):
+    """
+    域判别器 (Domain Discriminator)
+    =================================
+    
+    功能：判断输入特征来自源域还是目标域
+    
+    架构：3层MLP
+    - 输入：特征向量
+    - 输出：域标签 (0=源域, 1=目标域)
+    """
+    def __init__(self, input_dim, hidden_dim=256, output_dim=1):
+        super(Discriminator, self).__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),      # 第一层
+            nn.LeakyReLU(0.2),                     # 激活函数（负斜率0.2）
+            nn.Linear(hidden_dim, hidden_dim),     # 第二层
+            nn.LeakyReLU(0.2),
+            nn.Linear(hidden_dim, output_dim),     # 输出层
+            nn.Sigmoid()                           # Sigmoid 输出概率
+        )
+
+    def forward(self, x):
+        """
+        前向传播
+        
+        参数:
+            x: 输入特征 [batch_size, input_dim]
+        
+        返回:
+            域预测概率 [batch_size, 1]，值域 [0,1]
+        """
+        return self.model(x)
+    
+class DeepSVDD(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, use_batch_norm):
+        super(DeepSVDD, self).__init__()
+        self.center = nn.Parameter(torch.Tensor(input_dim))
+        self.radius = nn.Parameter(torch.Tensor(1))
+        self._init_weights()
+    
+    def _init_weights(self):
+        nn.init.constant_(self.center, 0.0)
+        nn.init.constant_(self.radius, 0.0)
+    
+    def forward(self, x, statics):
+        tmp_x = x.clone()
+        dist = torch.sum((tmp_x - self.center) ** 2, dim=1)
+        squared_radius = self.radius ** 2
+        return dist, self.center, squared_radius
 
 
 class PrototypicalClassifier(nn.Module):
